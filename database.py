@@ -1,249 +1,220 @@
-import sqlite3
+from supabase import create_client, Client
 import os
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_PATH = os.getenv("DATABASE_PATH", "trading_bot.db")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+else:
+    supabase = None
+    print("Warning: SUPABASE_URL or SUPABASE_KEY not set in environment variables.")
 
 def init_db():
-    """Initializes the SQLite database tables."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # 1. Accounts Table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS accounts (
-        account_id INTEGER PRIMARY KEY DEFAULT 1,
-        balance REAL NOT NULL,
-        equity REAL NOT NULL,
-        risk_pct REAL DEFAULT 1.0,
-        currency TEXT DEFAULT 'USD',
-        created_at TEXT NOT NULL
-    )
-    """)
-    
-    # 2. Positions Table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS positions (
-        position_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        symbol TEXT NOT NULL,
-        direction TEXT NOT NULL, -- 'LONG' or 'SHORT'
-        entry_price REAL NOT NULL,
-        size REAL NOT NULL,
-        stop_loss REAL NOT NULL,
-        take_profit REAL NOT NULL,
-        status TEXT NOT NULL DEFAULT 'OPEN', -- 'OPEN' or 'CLOSED'
-        exit_price REAL,
-        pnl REAL,
-        opened_at TEXT NOT NULL,
-        closed_at TEXT,
-        thesis TEXT,
-        risk_amount REAL NOT NULL
-    )
-    """)
-    
-    # 3. Journal Table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS journals (
-        journal_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        market_regime TEXT,
-        psychological_state TEXT,
-        notes TEXT NOT NULL,
-        lessons_learned TEXT
-    )
-    """)
-    
-    # Check if a default account exists, if not create one with $10,000 balance
-    cursor.execute("SELECT COUNT(*) FROM accounts WHERE account_id = 1")
-    if cursor.fetchone()[0] == 0:
-        now_str = datetime.now().isoformat()
-        cursor.execute(
-            "INSERT INTO accounts (account_id, balance, equity, risk_pct, currency, created_at) VALUES (1, 10000.0, 10000.0, 1.0, 'USD', ?)",
-            (now_str,)
-        )
-    
-    conn.commit()
-    conn.close()
+    """Initializes the database tables. Done via DDL in Supabase."""
+    pass
 
 # ACCOUNT OPERATIONS
 def get_account(account_id=1):
-    conn = get_db_connection()
-    row = conn.execute("SELECT * FROM accounts WHERE account_id = ?", (account_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    if not supabase:
+        return None
+    try:
+        response = supabase.table("accounts").select("*").eq("account_id", account_id).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"Error in get_account: {e}")
+        return None
 
 def update_account_balance(balance, equity, account_id=1):
-    conn = get_db_connection()
-    conn.execute(
-        "UPDATE accounts SET balance = ?, equity = ? WHERE account_id = ?",
-        (balance, equity, account_id)
-    )
-    conn.commit()
-    conn.close()
+    if not supabase:
+        return
+    try:
+        supabase.table("accounts").update({"balance": balance, "equity": equity}).eq("account_id", account_id).execute()
+    except Exception as e:
+        print(f"Error in update_account_balance: {e}")
 
 def update_account_risk(risk_pct, account_id=1):
-    conn = get_db_connection()
-    conn.execute(
-        "UPDATE accounts SET risk_pct = ? WHERE account_id = ?",
-        (risk_pct, account_id)
-    )
-    conn.commit()
-    conn.close()
+    if not supabase:
+        return
+    try:
+        supabase.table("accounts").update({"risk_pct": risk_pct}).eq("account_id", account_id).execute()
+    except Exception as e:
+        print(f"Error in update_account_risk: {e}")
 
 def reset_account(balance=10000.0, account_id=1):
-    conn = get_db_connection()
-    now_str = datetime.now().isoformat()
-    # Delete positions & journals
-    conn.execute("DELETE FROM positions")
-    conn.execute("DELETE FROM journals")
-    # Update account
-    conn.execute(
-        "UPDATE accounts SET balance = ?, equity = ?, risk_pct = 1.0, created_at = ? WHERE account_id = ?",
-        (balance, balance, now_str, account_id)
-    )
-    conn.commit()
-    conn.close()
+    if not supabase:
+        return
+    try:
+        # Delete positions & journals
+        supabase.table("positions").delete().neq("position_id", -1).execute()
+        supabase.table("journals").delete().neq("journal_id", -1).execute()
+        # Update account
+        supabase.table("accounts").update({
+            "balance": balance,
+            "equity": balance,
+            "risk_pct": 1.0
+        }).eq("account_id", account_id).execute()
+    except Exception as e:
+        print(f"Error in reset_account: {e}")
 
 # POSITION OPERATIONS
 def open_position(symbol, direction, entry_price, size, stop_loss, take_profit, thesis, risk_amount):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    now_str = datetime.now().isoformat()
-    cursor.execute(
-        """
-        INSERT INTO positions 
-        (symbol, direction, entry_price, size, stop_loss, take_profit, status, opened_at, thesis, risk_amount)
-        VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)
-        """,
-        (symbol.upper(), direction.upper(), entry_price, size, stop_loss, take_profit, now_str, thesis, risk_amount)
-    )
-    position_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return position_id
+    if not supabase:
+        return None
+    try:
+        response = supabase.table("positions").insert({
+            "symbol": symbol.upper(),
+            "direction": direction.upper(),
+            "entry_price": entry_price,
+            "size": size,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "status": "OPEN",
+            "thesis": thesis,
+            "risk_amount": risk_amount
+        }).execute()
+        return response.data[0]["position_id"] if response.data else None
+    except Exception as e:
+        print(f"Error in open_position: {e}")
+        return None
 
 def get_open_positions():
-    conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM positions WHERE status = 'OPEN'").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("positions").select("*").eq("status", "OPEN").execute()
+        return response.data
+    except Exception as e:
+        print(f"Error in get_open_positions: {e}")
+        return []
 
 def get_position(position_id):
-    conn = get_db_connection()
-    row = conn.execute("SELECT * FROM positions WHERE position_id = ?", (position_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    if not supabase:
+        return None
+    try:
+        response = supabase.table("positions").select("*").eq("position_id", position_id).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"Error in get_position: {e}")
+        return None
 
 def close_position(position_id, exit_price, pnl):
-    conn = get_db_connection()
-    now_str = datetime.now().isoformat()
-    conn.execute(
-        """
-        UPDATE positions 
-        SET status = 'CLOSED', exit_price = ?, pnl = ?, closed_at = ? 
-        WHERE position_id = ?
-        """,
-        (exit_price, pnl, now_str, position_id)
-    )
-    
-    # Fetch current account balance and update it
-    account = conn.execute("SELECT balance, equity FROM accounts WHERE account_id = 1").fetchone()
-    new_balance = account['balance'] + pnl
-    # Note: Equity will equal balance when all positions are closed, but let's update it here
-    conn.execute(
-        "UPDATE accounts SET balance = ?, equity = ? WHERE account_id = 1",
-        (new_balance, new_balance)
-    )
-    
-    conn.commit()
-    conn.close()
-    return new_balance
+    if not supabase:
+        return 10000.0
+    try:
+        now_str = datetime.now().isoformat()
+        supabase.table("positions").update({
+            "status": "CLOSED",
+            "exit_price": exit_price,
+            "pnl": pnl,
+            "closed_at": now_str
+        }).eq("position_id", position_id).execute()
+        
+        # Fetch current account balance and update it
+        account = get_account(1)
+        if account:
+            new_balance = account['balance'] + pnl
+            update_account_balance(new_balance, new_balance, 1)
+            return new_balance
+        return 10000.0
+    except Exception as e:
+        print(f"Error in close_position: {e}")
+        return 10000.0
 
 def get_closed_positions(limit=50):
-    conn = get_db_connection()
-    rows = conn.execute(
-        "SELECT * FROM positions WHERE status = 'CLOSED' ORDER BY closed_at DESC LIMIT ?", 
-        (limit,)
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("positions").select("*").eq("status", "CLOSED").order("closed_at", desc=True).limit(limit).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error in get_closed_positions: {e}")
+        return []
 
 # JOURNAL OPERATIONS
 def add_journal_entry(notes, market_regime=None, psychological_state=None, lessons_learned=None):
-    conn = get_db_connection()
-    now_str = datetime.now().isoformat()
-    conn.execute(
-        """
-        INSERT INTO journals (timestamp, market_regime, psychological_state, notes, lessons_learned)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (now_str, market_regime, psychological_state, notes, lessons_learned)
-    )
-    conn.commit()
-    conn.close()
+    if not supabase:
+        return
+    try:
+        supabase.table("journals").insert({
+            "market_regime": market_regime,
+            "psychological_state": psychological_state,
+            "notes": notes,
+            "lessons_learned": lessons_learned
+        }).execute()
+    except Exception as e:
+        print(f"Error in add_journal_entry: {e}")
 
 def get_journal_entries(limit=10):
-    conn = get_db_connection()
-    rows = conn.execute(
-        "SELECT * FROM journals ORDER BY timestamp DESC LIMIT ?", 
-        (limit,)
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("journals").select("*").order("timestamp", desc=True).limit(limit).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error in get_journal_entries: {e}")
+        return []
 
 # STATISTICS CALCULATION
 def get_portfolio_stats():
-    conn = get_db_connection()
-    
-    # Get all closed trades
-    rows = conn.execute("SELECT pnl, risk_amount FROM positions WHERE status = 'CLOSED'").fetchall()
-    conn.close()
-    
-    trades = [dict(r) for r in rows]
-    total_trades = len(trades)
-    
-    if total_trades == 0:
+    if not supabase:
         return {
             "total_trades": 0,
             "win_rate": 0.0,
             "profit_factor": 0.0,
             "net_profit": 0.0,
             "average_win": 0.0,
-            "average_loss": 0.0,
-            "max_drawdown": 0.0 # Will calculate from account history or set 0 for now
+            "average_loss": 0.0
         }
+    try:
+        # Get all closed trades
+        response = supabase.table("positions").select("pnl, risk_amount").eq("status", "CLOSED").execute()
+        trades = response.data
+        total_trades = len(trades)
         
-    wins = [t['pnl'] for t in trades if t['pnl'] > 0]
-    losses = [t['pnl'] for t in trades if t['pnl'] <= 0]
-    
-    win_rate = (len(wins) / total_trades) * 100
-    net_profit = sum(t['pnl'] for t in trades)
-    
-    gross_profits = sum(wins)
-    gross_losses = abs(sum(losses))
-    
-    profit_factor = gross_profits / gross_losses if gross_losses > 0 else (gross_profits if gross_profits > 0 else 1.0)
-    
-    avg_win = sum(wins) / len(wins) if len(wins) > 0 else 0.0
-    avg_loss = sum(losses) / len(losses) if len(losses) > 0 else 0.0
-    
-    return {
-        "total_trades": total_trades,
-        "win_rate": win_rate,
-        "profit_factor": profit_factor,
-        "net_profit": net_profit,
-        "average_win": avg_win,
-        "average_loss": avg_loss
-    }
-
-# Initialize database tables on load
-if __name__ not in ("__main__",):
-    init_db()
+        if total_trades == 0:
+            return {
+                "total_trades": 0,
+                "win_rate": 0.0,
+                "profit_factor": 0.0,
+                "net_profit": 0.0,
+                "average_win": 0.0,
+                "average_loss": 0.0
+            }
+            
+        wins = [t['pnl'] for t in trades if t['pnl'] > 0]
+        losses = [t['pnl'] for t in trades if t['pnl'] <= 0]
+        
+        win_rate = (len(wins) / total_trades) * 100
+        net_profit = sum(t['pnl'] for t in trades)
+        
+        gross_profits = sum(wins)
+        gross_losses = abs(sum(losses))
+        
+        profit_factor = gross_profits / gross_losses if gross_losses > 0 else (gross_profits if gross_profits > 0 else 1.0)
+        
+        avg_win = sum(wins) / len(wins) if len(wins) > 0 else 0.0
+        avg_loss = sum(losses) / len(losses) if len(losses) > 0 else 0.0
+        
+        return {
+            "total_trades": total_trades,
+            "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "net_profit": net_profit,
+            "average_win": avg_win,
+            "average_loss": avg_loss
+        }
+    except Exception as e:
+        print(f"Error in get_portfolio_stats: {e}")
+        return {
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "net_profit": 0.0,
+            "average_win": 0.0,
+            "average_loss": 0.0
+        }
