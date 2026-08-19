@@ -581,6 +581,22 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "discard_pending_trade":
         context.user_data['pending_trade'] = None
         await query.edit_message_text("❌ **Trade proposal discarded.** Marcus: _'Good choice. If in doubt, stay flat.'_")
+        
+    elif data.startswith("trigger_signal_"):
+        session = data.replace("trigger_signal_", "")
+        chat_id = query.message.chat.id
+        
+        # Edit current message to show scanning progress
+        await query.edit_message_text(f"⚡ _Generating {session.upper()} analysis & scanning markets..._")
+        
+        # Run analysis and drop signal
+        await run_session_analysis(session, chat_id, context)
+        
+        # Delete progress message
+        try:
+            await query.delete_message()
+        except Exception:
+            pass
 
 # DAILY SESSION ALERTS & SIGNAL DROP
 
@@ -682,9 +698,23 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
 async def dropsignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manually triggers session signal drop."""
     if not context.args:
+        # Instead of error, let's offer inline buttons for easier session trigger
+        keyboard = [
+            [
+                InlineKeyboardButton("🇯🇵 Tokyo Open", callback_data="trigger_signal_tokyo"),
+                InlineKeyboardButton("🇬🇧 London Open", callback_data="trigger_signal_london")
+            ],
+            [
+                InlineKeyboardButton("🇺🇸 New York Open", callback_data="trigger_signal_new_york"),
+                InlineKeyboardButton("🏁 NY Close Recap", callback_data="trigger_signal_close")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "❌ **Invalid Format**\n"
-            "Use: `/dropsignal <tokyo/london/new_york/close>`"
+            "⚡ **Select Trading Session** ⚡\n\n"
+            "Choose a session to scan markets and generate trade signals manually:",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
         return
         
