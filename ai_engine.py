@@ -176,44 +176,55 @@ def review_journal(notes: str, trades_summary: str = "") -> str:
     except Exception as e:
         return f"Journal review failed: {str(e)}"
 
-def parse_natural_language_trade(text: str, balance: float, risk_pct: float) -> dict:
+def parse_natural_language_trade(text: str, balance: float, risk_pct: float, current_time: str = None) -> dict:
     """
-    Parses natural language chat to identify if a trade proposal is present.
-    If present, extracts parameters and performs a professional audit.
-    If not, provides a chat response in Marcus Vance's persona.
+    Parses natural language chat to identify if a trade proposal is present 
+    or if a session signal/briefing is requested.
     """
     if not client:
         return {
             "is_trade_proposal": False,
+            "is_dropsignal_request": False,
+            "requested_session": None,
             "feedback": "OpenAI API Key not configured. Please set OPENAI_API_KEY in your .env file."
         }
+
+    time_context = f"\nCurrent Date and Time: {current_time}\n" if current_time else ""
 
     prompt = f"""
     The user is chatting with you. Inspect their message:
     "{text}"
-    
+    {time_context}
     Account Context:
     - Balance: ${balance:,.2f}
     - Risk Percentage: {risk_pct}% (${balance * risk_pct / 100:,.2f} USD)
     
-    Determine if they are proposing/suggesting a trade setup (buying/selling/longing/shorting an asset).
+    Determine the user's intent. They can be:
+    1. Proposing/suggesting a manual trade setup (buying/selling/longing/shorting an asset).
+    2. Requesting you to generate/drop a session signal briefing (e.g., 'drop a signal', 'london signals', 'tokyo analysis', 'give me a signal', 'run market scan').
+    3. Just chatting, asking questions, saying hi, or complaining.
     
     If they ARE proposing a trade setup:
-    1. Parse the setup: symbol (e.g. EURUSD), direction (LONG or SHORT), entry price, stop loss (SL), take profit (TP), and their reasoning/thesis.
-    2. Audit the trade using your core disciplined criteria:
-       - Stop loss and take profit must exist.
-       - Risk-to-Reward ratio must be at least 1:1.5, preferably 1:2.
-       - The entry price should be logical relative to SL/TP.
-    3. Formulate your decision: APPROVED (if it fits structural rules and looks like a disciplined trade) or REJECTED.
+    - Set is_trade_proposal = true and is_dropsignal_request = false.
+    - Parse the setup: symbol (e.g. EURUSD), direction (LONG or SHORT), entry price, stop loss (SL), take profit (TP), and their reasoning/thesis.
+    - Audit the trade: Stop loss and take profit must exist. Risk-to-Reward ratio must be at least 1:1.5.
+    - Formulate your decision: APPROVED or REJECTED.
     
-    If they are NOT proposing a trade (e.g. just asking a question, saying hi, chatting, complaining about a loss):
-    - Set is_trade_proposal = false.
+    If they ARE requesting a session signal/briefing drop:
+    - Set is_dropsignal_request = true and is_trade_proposal = false.
+    - Determine the requested_session (must be one of: "tokyo", "london", "new_york", or "close"). If they didn't specify a session, determine the most logical upcoming or active session based on the current time {current_time}.
+    - Set feedback = a confirmation that you are running a market scan (e.g., "Scanning major currency pairs for the London session, stand by kid...").
+    
+    If they are NOT proposing a trade and NOT requesting a signal drop (standard chat/questions):
+    - Set is_trade_proposal = false and is_dropsignal_request = false.
     - Respond to their message in your persona as Marcus Vance, giving them trading wisdom, psychology coaching, or general guidance.
     - Note: If they are asking for trading signals, market updates, or session setups, advise them in your persona that they can trigger a live market scan and generate signals using the `/dropsignal <tokyo/london/new_york/close>` command, or that they can expect scheduled daily briefs during those sessions. Explain that this command scans live charts for high-probability setups.
     
     Respond STRICTLY in JSON format with the following keys:
     {{
         "is_trade_proposal": true or false,
+        "is_dropsignal_request": true or false,
+        "requested_session": "tokyo" or "london" or "new_york" or "close" or null,
         "parsed_setup": {{
             "symbol": "string (normalized, e.g. EURUSD) or null",
             "direction": "LONG or SHORT or null",
@@ -226,7 +237,7 @@ def parse_natural_language_trade(text: str, balance: float, risk_pct: float) -> 
         "reason": "short explanation of the decision or null",
         "suggested_sl": float or null,
         "suggested_tp": float or null,
-        "feedback": "Your mentoring response/feedback in your persona as Marcus Vance."
+        "feedback": "Your mentoring response/feedback/confirmation in your persona as Marcus Vance."
     }}
     """
     
@@ -245,13 +256,15 @@ def parse_natural_language_trade(text: str, balance: float, risk_pct: float) -> 
         print(f"Error parsing natural language trade: {e}")
         return {
             "is_trade_proposal": False,
+            "is_dropsignal_request": False,
+            "requested_session": None,
             "feedback": f"Marcus Vance is having trouble hearing you: {str(e)}"
         }
 
-def generate_session_signal(session_name: str, technical_summary: str) -> dict:
+def generate_session_signal(session_name: str, technical_summary: str, current_time: str = None) -> dict:
     """
     Generates a structured trading session market analysis and drops a trade 
-    signal if a high-probability trade exists.
+    signal. Always generates a trade signal for the session.
     """
     if not client:
         return {
@@ -260,28 +273,27 @@ def generate_session_signal(session_name: str, technical_summary: str) -> dict:
             "signal": None
         }
 
+    time_context = f"\nCurrent Date and Time: {current_time}\n" if current_time else ""
+
     prompt = f"""
     You are Marcus Vance, preparing your market brief for the **{session_name}** session open.
-    
+    {time_context}
     Here is the live technical data compiled for major Forex currency pairs and commodities:
     {technical_summary}
     
-    Your task is to write a professional, highly disciplined market analysis.
+    Your task is to write a professional, highly disciplined market analysis and provide a trade signal.
     
     Step 1: Write a concise, structured market overview (1-2 paragraphs) in markdown format. Evaluate the trends, support/resistance levels, and where the momentum lies. Speak like a senior PM mentor.
     
-    Step 2: Look for high-probability trade setups conforming to our strict rules:
-    - Setup must have a clear catalyst.
-    - Risk-to-Reward ratio must be at least 1:2.
+    Step 2: You MUST identify and formulate exactly one high-probability trade setup/signal for the session. Analyze the provided technical data to find the best candidate (among the major pairs) that fits a long or short setup with a clear catalyst.
+    - The signal must be valid and cannot be null.
+    - Risk-to-Reward ratio must be at least 1:1.5, preferably 1:2.
     - Stop loss must be placed at a logical invalidation point (e.g. above/below recent daily highs/lows or moving averages).
-    
-    If such a setup exists, formulate a trade signal.
-    If no setup meets our high standards, state clearly: "No high-probability setups conform to our risk profile for this session. Capital preservation is key. We remain flat." Set has_signal = false and signal = null.
     
     Respond STRICTLY in JSON format with the following keys:
     {{
         "analysis": "Your markdown formatted session outlook written in your mentor persona.",
-        "has_signal": true or false,
+        "has_signal": true,
         "signal": {{
             "symbol": "string (e.g. EURUSD)",
             "direction": "LONG or SHORT",
@@ -289,7 +301,7 @@ def generate_session_signal(session_name: str, technical_summary: str) -> dict:
             "sl": float (stop loss level),
             "tp": float (take profit target),
             "thesis": "1-sentence explanation of why we are taking this trade."
-        }} or null
+        }}
     }}
     """
     

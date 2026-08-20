@@ -430,18 +430,31 @@ async def handle_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     status_msg = await update.message.reply_text("💬 _Marcus is reading your message..._")
     
+    # Pass current time context
+    current_time_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    
     # Parse using AI engine
     result = ai_engine.parse_natural_language_trade(
         text=text,
         balance=acc['balance'],
-        risk_pct=acc['risk_pct']
+        risk_pct=acc['risk_pct'],
+        current_time=current_time_str
     )
     
     await status_msg.delete()
     
     is_trade = result.get("is_trade_proposal", False)
+    is_dropsignal = result.get("is_dropsignal_request", False)
     feedback = result.get("feedback", "No response from risk manager.")
     
+    if is_dropsignal:
+        session = result.get("requested_session")
+        if session:
+            progress_msg = await update.message.reply_text(f"💬 Marcus: _\"{feedback}\"_")
+            await run_session_analysis(session, chat_id, context)
+            await progress_msg.delete()
+            return
+            
     if not is_trade:
         # Just chat/mentorship response
         await update.message.reply_text(feedback)
@@ -623,7 +636,8 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
     technical_summary = exchange.get_market_summary(symbols)
     
     # Run through OpenAI to get signal & analysis
-    analysis_data = ai_engine.generate_session_signal(session_name, technical_summary)
+    current_time_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    analysis_data = ai_engine.generate_session_signal(session_name, technical_summary, current_time=current_time_str)
     
     analysis_text = (
         f"📅 **SESSION BRIEFING: {session_name.upper()}** 📅\n"
