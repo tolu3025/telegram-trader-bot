@@ -242,32 +242,32 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
             logger.warning(f"Could not fetch position mode: {pe}. Defaulting to One-Way.")
 
         if is_hedged:
-            # Hedge mode order params — USDT-M Futures
+            # Hedge mode order params — USDT-M Futures, isolated margin
             params = {
-                "tdMode": "cross",
+                "tdMode": "isolated",
                 "marginCoin": "USDT",
                 "productType": "USDT-FUTURES",
                 "posSide": "long" if direction.upper() == "LONG" else "short"
             }
             # SL/TP params in hedge mode
             sl_tp_params = {
-                "tdMode": "cross",
+                "tdMode": "isolated",
                 "marginCoin": "USDT",
                 "productType": "USDT-FUTURES",
                 "posSide": "long" if direction.upper() == "LONG" else "short",
                 "reduceOnly": True
             }
         else:
-            # One-way mode order params — USDT-M Futures
+            # One-way mode order params — USDT-M Futures, isolated margin
             params = {
-                "tdMode": "cross",
+                "tdMode": "isolated",
                 "marginCoin": "USDT",
                 "productType": "USDT-FUTURES",
                 "tradeSide": "open"
             }
             # SL/TP params in one-way mode
             sl_tp_params = {
-                "tdMode": "cross",
+                "tdMode": "isolated",
                 "marginCoin": "USDT",
                 "productType": "USDT-FUTURES",
                 "tradeSide": "close",
