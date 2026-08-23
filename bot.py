@@ -1,7 +1,7 @@
 import os
 import logging
 import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -31,21 +31,21 @@ CHAT_ID_FILE = "chat_id.txt"
 MODE_FILE = "mode.txt"
 
 def get_current_mode() -> str:
-    """Returns 'forex' or 'crypto' (defaults to 'forex')."""
+    """Returns 'forex', 'crypto', or 'perpetual' (defaults to 'forex')."""
     if os.path.exists(MODE_FILE):
         try:
             with open(MODE_FILE, "r") as f:
                 mode = f.read().strip().lower()
-                if mode in ["forex", "crypto"]:
+                if mode in ["forex", "crypto", "perpetual"]:
                     return mode
         except Exception:
             pass
     return "forex"
 
 def set_current_mode(mode: str):
-    """Sets mode to 'forex' or 'crypto'."""
+    """Sets mode to 'forex', 'crypto', or 'perpetual'."""
     mode = mode.lower().strip()
-    if mode in ["forex", "crypto"]:
+    if mode in ["forex", "crypto", "perpetual"]:
         with open(MODE_FILE, "w") as f:
             f.write(mode)
 
@@ -111,7 +111,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📈 `/history` - View closed trade performance history.\n"
         "📓 `/journal <thoughts>` - Write your trading journal and get AI critique.\n"
         "⚙️ `/risk <1-5>` - Update risk percentage per trade.\n"
-        "🔄 `/reset [balance]` - Reset account to start fresh.\n\n"
+        "🔄 `/reset [balance]` - Reset account to start fresh.\n"
+        "⚙️ `/mode [forex/crypto/perpetual]` - Switch active trading mode.\n\n"
         "📷 **Chart Analysis**: Upload a screenshot and ask a question for technical review."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -250,6 +251,19 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bal_str = f"${cur_bal:.2f} USDT" if cur_bal is not None else "Unknown/Error"
                 exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}\nℹ️ **Bitget API Available Balance**: `{bal_str}`"
 
+            leverage_info = ""
+            if get_current_mode() == "perpetual":
+                leverage = 10.0
+                entry_val = float(entry)
+                if direction.upper() == "LONG":
+                    liq_price = entry_val * (1.0 - 0.995 / leverage)
+                else:
+                    liq_price = entry_val * (1.0 + 0.995 / leverage)
+                leverage_info = (
+                    f"\n• Leverage: **{leverage:.0f}x (Isolated)**"
+                    f"\n• Est. Liquidation Price: **{liq_price:.5f}**"
+                )
+
             success_msg = (
                 "✅ **TRADE APPROVED & EXECUTED**\n\n"
                 f"**Position #{execution['position_id']} Opened:**\n"
@@ -258,6 +272,7 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• Size: {execution['size']:,} units\n"
                 f"• Risk Amount: ${execution['risk_amount']:.2f} USD\n"
                 f"• R:R Ratio: {execution['rr_ratio']:.2f}"
+                f"{leverage_info}"
                 f"{exchange_line}\n\n"
                 f"💬 **Marcus Vance's Feedback**:\n_{ai_review.get('feedback')}_"
             )
@@ -692,6 +707,13 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "AI Persona: **Marcus Vance (30-year Crypto Specialist)**\n"
             "Briefings and order approvals are optimized for Crypto, including market stability checks."
         )
+    elif data == "switch_mode_perpetual":
+        set_current_mode("perpetual")
+        await query.edit_message_text(
+            "📈 **Switched to Perpetual Mode**\n\n"
+            "AI Persona: **Marcus Vance (30-year Perpetual Futures Specialist)**\n"
+            "Briefings and risk manager critiques are optimized for leveraged Perpetual Futures trading."
+        )
         
     elif data == "confirm_session_signal":
         trade = context.user_data.get('pending_signal')
@@ -784,7 +806,7 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
     current_mode = get_current_mode()
     
     # Filter symbols by active mode
-    if current_mode == "crypto":
+    if current_mode in ["crypto", "perpetual"]:
         # Keep only Crypto symbols (use a list of 50 cryptos instead of the session specific ones)
         symbols = [
             "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "LTC", "BCH", "LINK",
@@ -795,16 +817,26 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
         ]
         
         # Override session name to avoid trading sessions references
-        crypto_session_names = {
-            "tokyo": "Crypto Morning Briefing",
-            "london": "Crypto Midday Briefing",
-            "new_york": "Crypto Afternoon Briefing",
-            "close": "Crypto Daily Recap"
-        }
-        session_name = crypto_session_names.get(session_key, "Crypto Market Briefing")
+        if current_mode == "perpetual":
+            perpetual_session_names = {
+                "tokyo": "Perpetual Futures Morning Briefing",
+                "london": "Perpetual Futures Midday Briefing",
+                "new_york": "Perpetual Futures Afternoon Briefing",
+                "close": "Perpetual Futures Daily Recap"
+            }
+            session_name = perpetual_session_names.get(session_key, "Perpetual Futures Briefing")
+            forex_notice_msg = "ℹ️ **Notice**: Operating in Perpetual Mode. Briefings and signals target leveraged futures setups.\n\n"
+        else:
+            crypto_session_names = {
+                "tokyo": "Crypto Morning Briefing",
+                "london": "Crypto Midday Briefing",
+                "new_york": "Crypto Afternoon Briefing",
+                "close": "Crypto Daily Recap"
+            }
+            session_name = crypto_session_names.get(session_key, "Crypto Market Briefing")
+            forex_notice_msg = "ℹ️ **Notice**: Operating in Crypto Mode. Market analysis and signal scanner evaluate 50 major cryptocurrencies.\n\n"
         
         forex_closed = True
-        forex_notice_msg = "ℹ️ **Notice**: Operating in Crypto Mode. Market analysis and signal scanner evaluate 50 major cryptocurrencies.\n\n"
     else:
         # Forex mode: keep Forex/Commodity symbols and filter out closed ones
         symbols = [sym for sym in all_symbols if exchange.is_forex_symbol(sym) and not exchange.is_market_closed_for_symbol(sym)]
@@ -876,6 +908,18 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
             "thesis": thesis
         }
         
+        leverage_line = ""
+        if current_mode == "perpetual":
+            leverage = 10.0
+            if direction.upper() == "LONG":
+                liq = entry * (1.0 - 0.995 / leverage)
+            else:
+                liq = entry * (1.0 + 0.995 / leverage)
+            leverage_line = (
+                f"• Leverage: **{leverage:.0f}x (Isolated)**\n"
+                f"• Est. Liquidation Price: **{liq:.5f}**\n"
+            )
+
         analysis_text += (
             f"🚨 **MARCUS VANCE'S SESSION SIGNAL DETECTED** 🚨\n\n"
             f"**Proposed Trade Setup:**\n"
@@ -883,6 +927,7 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
             f"• Direction: {direction}\n"
             f"• Timeframe: {timeframe}\n"
             f"• Entry Level: {entry:.5f}\n"
+            f"{leverage_line}"
             f"• Stop Loss (SL): {sl:.5f}\n"
             f"• Take Profit (TP): {tp:.5f}\n"
             f"• Thesis: {thesis}\n\n"
@@ -935,35 +980,61 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
     )
 
 async def mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Allows user to switch the active trading mode (Forex or Crypto)."""
+    """Allows user to switch the active trading mode (Forex, Crypto, or Perpetual)."""
     if context.args:
         new_mode = context.args[0].lower().strip()
-        if new_mode in ["forex", "crypto"]:
+        if new_mode in ["forex", "crypto", "perpetual"]:
             set_current_mode(new_mode)
+            persona_name = (
+                "30-year Perpetual Futures Specialist" if new_mode == "perpetual"
+                else "30-year Crypto Specialist" if new_mode == "crypto"
+                else "20-year FX Veteran"
+            )
             await update.message.reply_text(
                 f"🔄 **Trading Mode Switched**\n\n"
                 f"Active Mode: **{new_mode.upper()}**\n"
-                f"AI Persona: **Marcus Vance ({'30-year Crypto Specialist' if new_mode == 'crypto' else '20-year FX Veteran'})**"
+                f"AI Persona: **Marcus Vance ({persona_name})**"
             )
             return
         else:
-            await update.message.reply_text("❌ Mode must be either `forex` or `crypto`.")
+            await update.message.reply_text("❌ Mode must be either `forex`, `crypto`, or `perpetual`.")
             return
 
     # No args: show active mode and provide buttons
     current_mode = get_current_mode()
+    persona_name = (
+        "30-year Perpetual Futures Specialist" if current_mode == "perpetual"
+        else "30-year Crypto Specialist" if current_mode == "crypto"
+        else "20-year FX Veteran"
+    )
     keyboard = [
         [
-            InlineKeyboardButton("💱 Forex Mode", callback_data="switch_mode_forex"),
-            InlineKeyboardButton("🪙 Crypto Mode", callback_data="switch_mode_crypto")
+            InlineKeyboardButton("💱 Forex", callback_data="switch_mode_forex"),
+            InlineKeyboardButton("🪙 Crypto", callback_data="switch_mode_crypto"),
+            InlineKeyboardButton("📈 Perpetual", callback_data="switch_mode_perpetual")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         f"📊 **Active Trading Mode** 📊\n\n"
         f"Current Mode: **{current_mode.upper()}**\n"
-        f"AI Persona: **Marcus Vance ({'30-year Crypto Specialist' if current_mode == 'crypto' else '20-year FX Veteran'})**\n\n"
+        f"AI Persona: **Marcus Vance ({persona_name})**\n\n"
         f"Choose a mode to switch active briefings, AI reviews, and trade validation settings:",
+        reply_markup=reply_markup
+    )
+
+async def app_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Replies with a button to open the Telegram Mini App (Web Console)."""
+    web_app_url = os.getenv("WEB_APP_URL", "http://localhost:8000")
+    keyboard = [
+        [
+            InlineKeyboardButton("📱 Open Trading Console", web_app=WebAppInfo(url=web_app_url))
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "⚡ **Marcus Vance's In-App Console** ⚡\n\n"
+        "Click the button below to open the real-time perpetual trading web console directly inside Telegram:",
         reply_markup=reply_markup
     )
 
@@ -1080,6 +1151,8 @@ def main():
     app.add_handler(CommandHandler("risk", risk_cmd))
     app.add_handler(CommandHandler("reset", reset_cmd))
     app.add_handler(CommandHandler("mode", mode_cmd))
+    app.add_handler(CommandHandler("app", app_cmd))
+    app.add_handler(CommandHandler("console", app_cmd))
     
     # Callback query handler for confirmation buttons
     app.add_handler(CallbackQueryHandler(button_click))
