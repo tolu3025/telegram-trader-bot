@@ -175,9 +175,32 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         market = markets[bitget_sym]
         min_qty = market.get("limits", {}).get("amount", {}).get("min", 0.001)
 
+        # Set leverage to 10x — this reduces margin requirement so small accounts can trade
+        LEVERAGE = 10
+        try:
+            ex.set_leverage(LEVERAGE, bitget_sym)
+            logger.info(f"Set leverage to {LEVERAGE}x for {bitget_sym}")
+        except Exception as le:
+            logger.warning(f"Could not set leverage (may already be set): {le}")
+
         # Format calculated size using CCXT amount_to_precision
         raw_qty = max(min_qty, size)
         qty = float(ex.amount_to_precision(bitget_sym, raw_qty))
+
+        # Guard: check if order value exceeds balance with leverage margin
+        # Required margin = (qty * entry) / leverage
+        try:
+            live_balance = ex.fetch_balance({"type": "swap"})
+            avail = float(live_balance.get("USDT", {}).get("free") or 0.0)
+            if avail > 0:
+                max_qty_for_balance = (avail * LEVERAGE * 0.95) / entry  # 95% of usable margin
+                if qty * entry / LEVERAGE > avail:
+                    # Reduce qty to fit within balance
+                    safe_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, max_qty_for_balance)))
+                    logger.warning(f"Order size {qty} exceeds balance capacity. Reduced to {safe_qty}")
+                    qty = safe_qty
+        except Exception as be:
+            logger.warning(f"Balance guard check failed (non-fatal): {be}")
 
         # Dynamically fetch current position mode from exchange to prevent mismatches
         is_hedged = False
