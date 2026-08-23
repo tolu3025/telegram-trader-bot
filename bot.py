@@ -695,10 +695,26 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
     
     # Filter symbols by active mode
     if current_mode == "crypto":
-        # Keep only Crypto symbols
-        symbols = [sym for sym in all_symbols if not exchange.is_forex_symbol(sym)]
+        # Keep only Crypto symbols (use a list of 50 cryptos instead of the session specific ones)
+        symbols = [
+            "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "LTC", "BCH", "LINK",
+            "AVAX", "SHIB", "DOT", "UNI", "NEAR", "ICP", "APT", "SUI", "AAVE", "FTM",
+            "GRT", "LDO", "OP", "ARB", "TIA", "IMX", "FET", "FIL", "HBAR", "ATOM",
+            "VET", "ETC", "ALGO", "RUNE", "EGLD", "FLOW", "SAND", "MANA", "GALA", "LRC",
+            "BAT", "ENJ", "ANKR", "KNC", "ZRX", "ONT", "QTUM", "ZEC", "DASH", "WAVES"
+        ]
+        
+        # Override session name to avoid trading sessions references
+        crypto_session_names = {
+            "tokyo": "Crypto Morning Briefing",
+            "london": "Crypto Midday Briefing",
+            "new_york": "Crypto Afternoon Briefing",
+            "close": "Crypto Daily Recap"
+        }
+        session_name = crypto_session_names.get(session_key, "Crypto Market Briefing")
+        
         forex_closed = True
-        forex_notice_msg = "ℹ️ **Notice**: Operating in Crypto Mode. Analysis and signals are focused exclusively on Cryptocurrencies.\n\n"
+        forex_notice_msg = "ℹ️ **Notice**: Operating in Crypto Mode. Market analysis and signal scanner evaluate 50 major cryptocurrencies.\n\n"
     else:
         # Forex mode: keep Forex/Commodity symbols and filter out closed ones
         symbols = [sym for sym in all_symbols if exchange.is_forex_symbol(sym) and not exchange.is_market_closed_for_symbol(sym)]
@@ -836,22 +852,37 @@ async def mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def dropsignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manually triggers session signal drop."""
+    current_mode = get_current_mode()
     if not context.args:
         # Instead of error, let's offer inline buttons for easier session trigger
-        keyboard = [
-            [
-                InlineKeyboardButton("🇯🇵 Tokyo Open", callback_data="trigger_signal_tokyo"),
-                InlineKeyboardButton("🇬🇧 London Open", callback_data="trigger_signal_london")
-            ],
-            [
-                InlineKeyboardButton("🇺🇸 New York Open", callback_data="trigger_signal_new_york"),
-                InlineKeyboardButton("🏁 NY Close Recap", callback_data="trigger_signal_close")
+        if current_mode == "crypto":
+            keyboard = [
+                [
+                    InlineKeyboardButton("🌅 Morning Briefing", callback_data="trigger_signal_tokyo"),
+                    InlineKeyboardButton("☀️ Midday Briefing", callback_data="trigger_signal_london")
+                ],
+                [
+                    InlineKeyboardButton("🌤️ Afternoon Briefing", callback_data="trigger_signal_new_york"),
+                    InlineKeyboardButton("🌙 Daily Recap", callback_data="trigger_signal_close")
+                ]
             ]
-        ]
+            text = "⚡ **Select Crypto Briefing** ⚡\n\nChoose an update slot to scan the crypto market and generate signals manually:"
+        else:
+            keyboard = [
+                [
+                    InlineKeyboardButton("🇯🇵 Tokyo Open", callback_data="trigger_signal_tokyo"),
+                    InlineKeyboardButton("🇬🇧 London Open", callback_data="trigger_signal_london")
+                ],
+                [
+                    InlineKeyboardButton("🇺🇸 New York Open", callback_data="trigger_signal_new_york"),
+                    InlineKeyboardButton("🏁 NY Close Recap", callback_data="trigger_signal_close")
+                ]
+            ]
+            text = "⚡ **Select Trading Session** ⚡\n\nChoose a session to scan markets and generate trade signals manually:"
+            
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "⚡ **Select Trading Session** ⚡\n\n"
-            "Choose a session to scan markets and generate trade signals manually:",
+            text,
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )

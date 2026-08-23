@@ -9,9 +9,12 @@ FIAT_CURRENCIES = {
 }
 
 KNOWN_CRYPTOS = {
-    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "TON", 
-    "SHIB", "AVAX", "DOT", "LINK", "LTC", "NEAR", "SUI", "PEPE",
-    "WIF", "FET", "RNDR", "ICP", "UNI"
+    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "LTC", "BCH", "LINK",
+    "AVAX", "SHIB", "DOT", "UNI", "NEAR", "ICP", "APT", "SUI", "AAVE", "FTM",
+    "GRT", "LDO", "OP", "ARB", "TIA", "IMX", "FET", "FIL", "HBAR", "ATOM",
+    "VET", "ETC", "ALGO", "RUNE", "EGLD", "FLOW", "SAND", "MANA", "GALA", "LRC",
+    "BAT", "ENJ", "ANKR", "KNC", "ZRX", "ONT", "QTUM", "ZEC", "DASH", "WAVES",
+    "OMG", "ICX", "COMP", "SUSHI", "CRV"
 }
 
 def normalize_symbol(symbol: str) -> str:
@@ -150,8 +153,10 @@ def get_market_summary(symbols: list) -> str:
     Downloads recent price history for a list of symbols and generates a 
     structured technical summary (spot, high, low, SMA indicators) for the AI.
     """
+    from concurrent.futures import ThreadPoolExecutor
     summary_parts = []
-    for sym in symbols:
+    
+    def process_symbol(sym):
         try:
             norm_sym = normalize_symbol(sym)
             ticker = yf.Ticker(norm_sym)
@@ -159,7 +164,7 @@ def get_market_summary(symbols: list) -> str:
             # Download 5 days of 1-hour bars
             df = ticker.history(period="5d", interval="1h")
             if df.empty:
-                continue
+                return None
                 
             close_prices = df['Close']
             # If multi-index, grab first column
@@ -186,7 +191,7 @@ def get_market_summary(symbols: list) -> str:
             
             display_name = sym.upper().replace("=X", "")
             decimals = 2 if spot >= 100 else 5
-            summary_parts.append(
+            return (
                 f"Asset: {display_name} ({norm_sym})\n"
                 f"- Current Spot Rate: {spot:.{decimals}f}\n"
                 f"- 24h High: {high_24h:.{decimals}f} | 24h Low: {low_24h:.{decimals}f}\n"
@@ -195,6 +200,15 @@ def get_market_summary(symbols: list) -> str:
             )
         except Exception as e:
             print(f"Error summarising {sym}: {e}")
+            return None
+
+    # Process in parallel using a thread pool
+    with ThreadPoolExecutor(max_workers=min(len(symbols), 20)) as executor:
+        results = executor.map(process_symbol, symbols)
+        
+    for res in results:
+        if res:
+            summary_parts.append(res)
             
     if not summary_parts:
         return "Unable to retrieve market data summary."
