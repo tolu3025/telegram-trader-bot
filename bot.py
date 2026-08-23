@@ -638,7 +638,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             entry=trade['entry'],
             sl=trade['sl'],
             tp=trade['tp'],
-            thesis=trade['thesis']
+            thesis=trade['thesis'],
+            auto_adjust=True
         )
         
         # Clear pending
@@ -701,7 +702,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             entry=trade['entry'],
             sl=trade['sl'],
             tp=trade['tp'],
-            thesis=trade['full_thesis']
+            thesis=trade['full_thesis'],
+            auto_adjust=True
         )
         
         # Clear pending

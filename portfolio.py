@@ -106,10 +106,10 @@ def calculate_pnl(direction: str, entry: float, exit: float, size: float, quote_
         
     return round(pnl_quote * quote_to_usd, 2)
 
-def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float, tp: float, thesis: str):
+def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float, tp: float, thesis: str, auto_adjust: bool = False):
     """
     Processes a trade proposal. 
-    1. Validates risk-to-reward.
+    1. Validates risk-to-reward (with optional auto-adjustment).
     2. Validates symbol.
     3. Fetches account stats and calculates size.
     4. Opens the trade in the DB.
@@ -117,7 +117,17 @@ def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float,
     # 1. Structural checks
     is_struct_valid, reason, risk_dist, reward_dist, rr = calculate_risk_params(direction, entry, sl, tp)
     if not is_struct_valid:
-        return {"success": False, "reason": reason}
+        if auto_adjust and "Risk-to-Reward ratio" in reason:
+            # Auto-adjust TP to achieve exactly 1.5 R:R
+            if direction.upper() == "LONG":
+                tp = entry + (1.5 * risk_dist)
+            else:
+                tp = entry - (1.5 * risk_dist)
+            # Re-validate structural parameters
+            is_struct_valid, reason, risk_dist, reward_dist, rr = calculate_risk_params(direction, entry, sl, tp)
+        
+        if not is_struct_valid:
+            return {"success": False, "reason": reason}
         
     # 2. Check symbol
     try:
