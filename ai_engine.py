@@ -287,7 +287,7 @@ def parse_natural_language_trade(text: str, balance: float, risk_pct: float, cur
             "feedback": f"Marcus Vance is having trouble hearing you: {str(e)}"
         }
 
-def generate_session_signal(session_name: str, technical_summary: str, current_time: str = None, forex_closed: bool = False, mode: str = "forex") -> dict:
+def generate_session_signal(session_name: str, technical_summary: str, current_time: str = None, forex_closed: bool = False, mode: str = "forex", account_balance: float = None) -> dict:
     """
     Generates a structured trading session market analysis and drops a trade 
     signal.
@@ -301,13 +301,26 @@ def generate_session_signal(session_name: str, technical_summary: str, current_t
 
     time_context = f"\nCurrent Date and Time: {current_time}\n" if current_time else ""
     
+    balance_context = ""
+    if account_balance is not None:
+        balance_context = f"\nUser Account Available Balance: ${account_balance:.2f} USD\n"
+        if account_balance < 100.0:
+            balance_context += (
+                "⚠️ CRITICAL: The user has a small account balance. You MUST NOT select expensive base assets "
+                "like BTC-USD or ETH-USD because their minimum exchange order sizes are too large for their balance. "
+                "Instead, you MUST select a lower-priced cryptocurrency asset (e.g. SOL-USD, ADA-USD, XRP-USD, "
+                "DOGE-USD, BCH-USD, LINK-USD, AVAX-USD, NEAR-USD, SUI-USD, etc.) where the minimum order size "
+                "is much cheaper (under $10 USD nominal value) and fits their wallet volume.\n"
+            )
+
     forex_notice = ""
     if forex_closed:
-        forex_notice = "\nNote: Forex and Commodity markets are currently CLOSED. You must write the analysis focusing on Cryptocurrency markets and you MUST suggest a trade setup only for an active Cryptocurrency asset (e.g. BTC-USD, ETH-USD, SOL-USD).\n"
+        forex_notice = "\nNote: Forex and Commodity markets are currently CLOSED. You must write the analysis focusing on Cryptocurrency markets.\n"
 
     prompt = f"""
     You are Marcus Vance, preparing your professional market brief for the **{session_name}** session.
     {time_context}
+    {balance_context}
     Here is the live technical data for active assets being scanned right now:
     {technical_summary}
     {forex_notice}

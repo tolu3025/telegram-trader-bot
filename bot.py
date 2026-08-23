@@ -815,9 +815,23 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
     # Get live technical stats
     technical_summary = exchange.get_market_summary(symbols)
     
+    # Fetch live Bitget balance if available to guide AI asset selection
+    live_balance = bitget_client.get_account_balance()
+    if live_balance is None:
+        acc = database.get_account()
+        if acc:
+            live_balance = acc['balance']
+            
     # Run through OpenAI to get signal & analysis
     current_time_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    analysis_data = ai_engine.generate_session_signal(session_name, technical_summary, current_time=current_time_str, forex_closed=forex_closed, mode=current_mode)
+    analysis_data = ai_engine.generate_session_signal(
+        session_name, 
+        technical_summary, 
+        current_time=current_time_str, 
+        forex_closed=forex_closed, 
+        mode=current_mode,
+        account_balance=live_balance
+    )
     
     analysis_text = (
         f"📅 **SESSION BRIEFING: {session_name.upper()}** 📅\n"
