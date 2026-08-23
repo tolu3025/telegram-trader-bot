@@ -175,30 +175,46 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         market = markets[bitget_sym]
         min_qty = market.get("limits", {}).get("amount", {}).get("min", 0.001)
 
-        # Set leverage to 10x — this reduces margin requirement so small accounts can trade
+        # Set leverage to 10x — Bitget requires marginMode param explicitly
         LEVERAGE = 10
-        try:
-            ex.set_leverage(LEVERAGE, bitget_sym)
-            logger.info(f"Set leverage to {LEVERAGE}x for {bitget_sym}")
-        except Exception as le:
-            logger.warning(f"Could not set leverage (may already be set): {le}")
+        leverage_set = False
+        for margin_mode in ["cross", "isolated"]:
+            try:
+                ex.set_leverage(LEVERAGE, bitget_sym, params={"marginMode": margin_mode})
+                logger.info(f"Set leverage to {LEVERAGE}x ({margin_mode}) for {bitget_sym}")
+                leverage_set = True
+                break
+            except Exception as le:
+                logger.warning(f"Could not set leverage with marginMode={margin_mode}: {le}")
+
+        if not leverage_set:
+            logger.warning("Leverage could not be set — falling back to conservative sizing (1x safety)")
 
         # Format calculated size using CCXT amount_to_precision
         raw_qty = max(min_qty, size)
         qty = float(ex.amount_to_precision(bitget_sym, raw_qty))
 
-        # Guard: check if order value exceeds balance with leverage margin
-        # Required margin = (qty * entry) / leverage
+        # ── Balance Guard ──────────────────────────────────────────────────────
+        # Cap order value to 85% of available balance at WORST CASE (1x leverage).
+        # This is intentionally conservative: if set_leverage silently failed and
+        # the exchange defaults to 1x, the notional value = qty * entry must fit
+        # inside the available balance.  With proper 10x leverage the margin cost
+        # is only 1/10th of this, so being conservative here never over-constrains.
         try:
             live_balance = ex.fetch_balance({"type": "swap"})
             avail = float(live_balance.get("USDT", {}).get("free") or 0.0)
             if avail > 0:
-                max_qty_for_balance = (avail * LEVERAGE * 0.95) / entry  # 95% of usable margin
-                if qty * entry / LEVERAGE > avail:
-                    # Reduce qty to fit within balance
-                    safe_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, max_qty_for_balance)))
-                    logger.warning(f"Order size {qty} exceeds balance capacity. Reduced to {safe_qty}")
+                # Hard cap: notional value of order ≤ 85% of available balance
+                max_notional = avail * 0.85
+                if qty * entry > max_notional:
+                    safe_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, max_notional / entry)))
+                    logger.warning(
+                        f"Order notional {qty * entry:.2f} USDT exceeds 85% of balance "
+                        f"({max_notional:.2f} USDT). Reduced qty: {qty} → {safe_qty}"
+                    )
                     qty = safe_qty
+                else:
+                    logger.info(f"Balance guard OK: notional={qty * entry:.2f} USDT, avail={avail:.2f} USDT")
         except Exception as be:
             logger.warning(f"Balance guard check failed (non-fatal): {be}")
 
