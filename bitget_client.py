@@ -44,7 +44,8 @@ def _get_exchange():
             "secret":     BITGET_API_SECRET,
             "password":   BITGET_PASSPHRASE,
             "options": {
-                "defaultType": "swap",   # Perpetual futures
+                "defaultType": "swap",       # Perpetual futures
+                "defaultSubType": "linear",  # USDT-margined (linear)
             }
         })
 
@@ -98,14 +99,15 @@ def get_account_balance() -> float:
         return None
 
     try:
-        balance = ex.fetch_balance({"type": "swap"})
-        usdt_balance = (
-            balance.get("USDT", {}).get("free")
-            or balance.get("USDT", {}).get("total")
-            or 0.0
+        balance = ex.fetch_balance({"type": "swap", "productType": "USDT-FUTURES"})
+        usdt = balance.get("USDT", {})
+        free  = usdt.get("free")  or 0.0
+        used  = usdt.get("used")  or 0.0
+        total = usdt.get("total") or 0.0
+        logger.info(
+            f"Bitget USDT-M Futures balance — free={free:.2f}, used={used:.2f}, total={total:.2f}"
         )
-        logger.info(f"Fetched Bitget USDT futures balance: ${usdt_balance:.2f}")
-        return float(usdt_balance)
+        return float(free or total)
     except Exception as e:
         logger.error(f"Failed to fetch Bitget account balance: {e}")
         return None
@@ -202,12 +204,10 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         # Either way, we never send an order Bitget will reject for balance reasons.
         avail = 0.0
         try:
-            live_balance = ex.fetch_balance({"type": "swap"})
-            avail = float(
-                live_balance.get("USDT", {}).get("free")
-                or live_balance.get("USDT", {}).get("total")
-                or 0.0
-            )
+            live_balance = ex.fetch_balance({"type": "swap", "productType": "USDT-FUTURES"})
+            usdt_b = live_balance.get("USDT", {})
+            avail = float(usdt_b.get("free") or usdt_b.get("total") or 0.0)
+            logger.info(f"Balance guard: USDT-M futures free={avail:.2f}")
         except Exception as be:
             logger.warning(f"Could not fetch balance for guard (non-fatal): {be}")
 
@@ -242,26 +242,34 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
             logger.warning(f"Could not fetch position mode: {pe}. Defaulting to One-Way.")
 
         if is_hedged:
-            # Hedge mode order params
+            # Hedge mode order params — USDT-M Futures
             params = {
                 "tdMode": "cross",
+                "marginCoin": "USDT",
+                "productType": "USDT-FUTURES",
                 "posSide": "long" if direction.upper() == "LONG" else "short"
             }
             # SL/TP params in hedge mode
             sl_tp_params = {
                 "tdMode": "cross",
+                "marginCoin": "USDT",
+                "productType": "USDT-FUTURES",
                 "posSide": "long" if direction.upper() == "LONG" else "short",
                 "reduceOnly": True
             }
         else:
-            # One-way mode order params
+            # One-way mode order params — USDT-M Futures
             params = {
                 "tdMode": "cross",
+                "marginCoin": "USDT",
+                "productType": "USDT-FUTURES",
                 "tradeSide": "open"
             }
             # SL/TP params in one-way mode
             sl_tp_params = {
                 "tdMode": "cross",
+                "marginCoin": "USDT",
+                "productType": "USDT-FUTURES",
                 "tradeSide": "close",
                 "reduceOnly": True
             }
