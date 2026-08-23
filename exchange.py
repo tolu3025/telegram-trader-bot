@@ -14,7 +14,8 @@ KNOWN_CRYPTOS = {
     "GRT", "LDO", "OP", "ARB", "TIA", "IMX", "FET", "FIL", "HBAR", "ATOM",
     "VET", "ETC", "ALGO", "RUNE", "EGLD", "FLOW", "SAND", "MANA", "GALA", "LRC",
     "BAT", "ENJ", "ANKR", "KNC", "ZRX", "ONT", "QTUM", "ZEC", "DASH", "WAVES",
-    "OMG", "ICX", "COMP", "SUSHI", "CRV"
+    "OMG", "ICX", "COMP", "SUSHI", "CRV",
+    "POPCAT", "PIE", "TRX", "TRON"
 }
 
 def normalize_symbol(symbol: str) -> str:
@@ -140,6 +141,66 @@ def get_live_price(symbol: str) -> float:
 
     raise ValueError(f"Could not fetch live rate for ticker '{ticker_str}' (original: '{symbol}')")
 
+def detect_support_resistance(df, spot: float, window: int = 5) -> tuple:
+    """
+    Finds swing highs and swing lows to identify static support and resistance levels near the spot price.
+    """
+    if df.empty or len(df) < (window * 2 + 1):
+        return [], []
+        
+    highs = df['High'].values
+    lows = df['Low'].values
+    n = len(df)
+    
+    swing_highs = []
+    swing_lows = []
+    
+    for i in range(window, n - window):
+        # Check swing high
+        is_high = True
+        for j in range(1, window + 1):
+            if highs[i] < highs[i-j] or highs[i] < highs[i+j]:
+                is_high = False
+                break
+        if is_high:
+            swing_highs.append(float(highs[i]))
+            
+        # Check swing low
+        is_low = True
+        for j in range(1, window + 1):
+            if lows[i] > lows[i-j] or lows[i] > lows[i+j]:
+                is_low = False
+                break
+        if is_low:
+            swing_lows.append(float(lows[i]))
+            
+    # Filter support levels (below spot) and resistance levels (above spot)
+    supports = [s for s in swing_lows if s < spot]
+    resistances = [r for r in swing_highs if r > spot]
+    
+    # Sort: supports descending (closest first), resistances ascending (closest first)
+    supports.sort(reverse=True)
+    resistances.sort()
+    
+    # De-duplicate close levels (within 0.3%)
+    def deduplicate(levels):
+        deduped = []
+        for lvl in levels:
+            if not deduped or all(abs(lvl - d) / d > 0.003 for d in deduped):
+                deduped.append(lvl)
+        return deduped
+        
+    supports = deduplicate(supports)[:3] # Top 3 closest supports
+    resistances = deduplicate(resistances)[:3] # Top 3 closest resistances
+    
+    # Fallback to rolling min/max if no swing levels found
+    if not supports and not df.empty:
+        supports = [float(df['Low'].min())]
+    if not resistances and not df.empty:
+        resistances = [float(df['High'].max())]
+        
+    return supports, resistances
+
 def is_valid_symbol(symbol: str) -> bool:
     """Verifies if the symbol has a fetchable price."""
     try:
@@ -158,7 +219,7 @@ def get_market_summary(symbols: list) -> str:
     
     def process_symbol(sym):
         try:
-            norm_sym = normalize_symbol(sym)
+            norm_sym = exchange.normalize_symbol(sym) if 'exchange' in globals() else normalize_symbol(sym)
             ticker = yf.Ticker(norm_sym)
             
             # Download 5 days of 1-hour bars
@@ -189,13 +250,22 @@ def get_market_summary(symbols: list) -> str:
             
             trend = "BULLISH" if spot > sma_20 else "BEARISH"
             
+            # Detect support and resistance
+            supports, resistances = detect_support_resistance(df, spot)
+            
             display_name = sym.upper().replace("=X", "")
             decimals = 2 if spot >= 100 else 5
+            
+            support_str = ", ".join(f"{s:.{decimals}f}" for s in supports) if supports else "None detected"
+            resistance_str = ", ".join(f"{r:.{decimals}f}" for r in resistances) if resistances else "None detected"
+            
             return (
                 f"Asset: {display_name} ({norm_sym})\n"
                 f"- Current Spot Rate: {spot:.{decimals}f}\n"
                 f"- 24h High: {high_24h:.{decimals}f} | 24h Low: {low_24h:.{decimals}f}\n"
-                f"- 20h SMA: {sma_20:.{decimals}f} | 50h SMA: {sma_50:.{decimals}f}\n"
+                f"- Dynamic Support/Resistance: SMA 20 ({sma_20:.{decimals}f}) | SMA 50 ({sma_50:.{decimals}f})\n"
+                f"- Detected Static Support (Swing Lows): {support_str}\n"
+                f"- Detected Static Resistance (Swing Highs): {resistance_str}\n"
                 f"- Short-term Trend: {trend} (relative to 20h SMA)\n"
             )
         except Exception as e:
