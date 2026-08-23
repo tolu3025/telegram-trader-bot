@@ -153,6 +153,14 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
 
     try:
         bitget_sym = normalize_to_bitget_symbol(symbol)
+        
+        # Explicitly configure unilateral/one-way mode on the exchange for this symbol
+        try:
+            ex.set_position_mode(False, bitget_sym)
+            logger.info(f"Forced Bitget One-Way (Unilateral) position mode for {bitget_sym}.")
+        except Exception as pe:
+            logger.info(f"Failed to set position mode (likely already set to unilateral): {pe}")
+
         # In one-way (unilateral) mode: buy = open long, sell = open short
         side = "buy" if direction.upper() == "LONG" else "sell"
 
@@ -168,9 +176,10 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         raw_qty = max(min_qty, size)
         qty = float(ex.amount_to_precision(bitget_sym, raw_qty))
 
-        # One-way mode params — do NOT include posSide (that is for Hedge mode only)
+        # One-way mode opening params — requires tradeSide='open'
         params = {
             "tdMode": "cross",  # Cross margin mode
+            "tradeSide": "open",
         }
 
         entry_order = ex.create_order(
@@ -193,9 +202,10 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 amount=qty,
                 price=sl,
                 params={
-                    **params,
+                    "tdMode": "cross",
                     "stopPrice": sl,
                     "reduceOnly": True,
+                    "tradeSide": "close",
                 }
             )
         except Exception as e:
@@ -211,9 +221,10 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 amount=qty,
                 price=tp,
                 params={
-                    **params,
+                    "tdMode": "cross",
                     "stopPrice": tp,
                     "reduceOnly": True,
+                    "tradeSide": "close",
                 }
             )
         except Exception as e:
