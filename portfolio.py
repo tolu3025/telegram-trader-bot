@@ -92,12 +92,11 @@ def calculate_position_size(symbol: str, direction: str, entry: float, sl: float
     if risk_distance == 0:
         raise ValueError("Stop loss cannot equal entry price.")
         
-    # Calculate size (units of base currency)
-    # Risk_USD = Size * Risk_Distance * Quote_to_USD
-    # Size = Risk_USD / (Risk_Distance * Quote_to_USD)
     size = risk_amount_usd / (risk_distance * quote_to_usd)
     
-    return round(size, 2), quote_to_usd
+    # If size is small (common in Crypto e.g. BTC), round to 6 decimal places, otherwise 2.
+    rounded_size = round(size, 6) if size < 0.1 else round(size, 2)
+    return rounded_size, quote_to_usd
 
 def calculate_pnl(direction: str, entry: float, exit: float, size: float, quote_to_usd: float) -> float:
     """Calculates P&L in USD for a closed position."""
