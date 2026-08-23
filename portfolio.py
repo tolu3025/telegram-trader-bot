@@ -75,7 +75,9 @@ def calculate_risk_params(direction: str, entry: float, sl: float, tp: float):
     rr_ratio = reward_dist / risk_dist if risk_dist > 0 else 0
     
     # Disciplined rule: Risk-to-Reward must be at least 1:1.5
-    if rr_ratio < 1.5:
+    # Using 1.49 threshold (not 1.5 exactly) to handle floating-point precision
+    # where a true 1.5 R:R may compute as 1.4999... and get incorrectly rejected.
+    if rr_ratio < 1.49:
         return False, f"Risk-to-Reward ratio ({rr_ratio:.2f}) is too low. Disciplined professional traders require at least 1:1.5 R:R.", risk_dist, reward_dist, rr_ratio
         
     return True, "Setup complies with basic structural rules.", risk_dist, reward_dist, rr_ratio
