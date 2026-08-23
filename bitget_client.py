@@ -232,6 +232,20 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                     f"avail={avail:.2f}, leverage_set={leverage_set}"
                 )
 
+        # ── Minimum Margin Floor (Bitget error 45110) ──────────────────────────
+        # Bitget isolated margin requires at least 1 USDT margin per position.
+        # margin = qty × entry / leverage  →  min_qty = 1 USDT × leverage / entry
+        MIN_MARGIN_USDT = 1.5  # 1.5 USDT buffer above the 1 USDT minimum
+        lev_for_floor = LEVERAGE if leverage_set else 1
+        min_qty_for_margin = MIN_MARGIN_USDT * lev_for_floor / entry
+        if qty * entry / lev_for_floor < MIN_MARGIN_USDT:
+            bumped_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, min_qty_for_margin)))
+            logger.warning(
+                f"Margin floor: qty {qty} gives margin {qty * entry / lev_for_floor:.3f} USDT < "
+                f"{MIN_MARGIN_USDT} USDT minimum. Bumping qty {qty} → {bumped_qty}"
+            )
+            qty = bumped_qty
+
         # Dynamically fetch current position mode from exchange to prevent mismatches
         is_hedged = False
         try:
@@ -299,12 +313,15 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 except Exception as order_exc:
                     last_order_err = order_exc
                     err_str = str(order_exc)
-                    if "43012" in err_str or "insufficient" in err_str.lower():
-                        new_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, qty * 0.5)))
-                        if new_qty >= qty:  # at minimum — stop reducing
+                    if "43012" in err_str or "45110" in err_str or "insufficient" in err_str.lower() or "minimum amount" in err_str.lower():
+                        # Respect both exchange min qty AND 1.5 USDT margin floor
+                        margin_min_qty = 1.5 * lev_for_floor / entry
+                        floor_qty = max(min_qty, margin_min_qty)
+                        new_qty = float(ex.amount_to_precision(bitget_sym, max(floor_qty, qty * 0.5)))
+                        if new_qty >= qty:  # already at minimum
                             logger.error(f"  Min qty reached with tdMode={td_mode}. Trying next mode.")
                             break
-                        logger.warning(f"  Insufficient balance, halving qty {qty} → {new_qty}")
+                        logger.warning(f"  Error {err_str[:60]}... halving qty {qty} → {new_qty}")
                         qty = new_qty
                     else:
                         logger.warning(f"  Non-balance error with tdMode={td_mode}: {err_str[:200]}")
