@@ -111,17 +111,27 @@ def get_account_balance() -> float:
         return None
 
 
-def normalize_to_bitget_symbol(symbol: str) -> str:
+def normalize_to_bitget_symbol(symbol: str, ex=None) -> str:
     """
-    Converts yfinance-style crypto tickers to Bitget perpetual swap symbols.
-    Examples:
-      BTC-USD  -> BTC/USDT:USDT
-      ETH-USD  -> ETH/USDT:USDT
-      SOL-USD  -> SOL/USDT:USDT
+    Converts yfinance-style crypto tickers or Forex symbols to Bitget perpetual swap symbols.
+    Uses dynamic market lookup if the exchange client is provided.
     """
-    # Strip Yahoo Finance suffixes
-    base = symbol.upper().replace("-USD", "").replace("-USDT", "").replace("=X", "").replace("-", "").replace("/", "")
-    # Bitget USDT-margined perpetual format
+    clean_sym = symbol.upper().replace("=X", "").replace("-", "").replace("/", "")
+    
+    # If the active exchange client is provided, query actual listed markets for a precise match
+    if ex:
+        try:
+            markets = ex.load_markets()
+            for m_sym in markets:
+                # Strip symbols to check matches (e.g. 'BTC/USDT:USDT' -> 'BTCUSDT')
+                clean_m = m_sym.upper().replace("-", "").replace("/", "").split(":")[0]
+                if clean_m == clean_sym or clean_m.replace("USDT", "USD") == clean_sym:
+                    return m_sym
+        except Exception as e:
+            logger.debug(f"Dynamic symbol mapping failed: {e}")
+
+    # Fallback to default crypto mapping format
+    base = clean_sym.replace("USD", "").replace("USDT", "")
     return f"{base}/USDT:USDT"
 
 
@@ -152,7 +162,7 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         return {"success": False, "order_id": None, "message": "Bitget client not initialized."}
 
     try:
-        bitget_sym = normalize_to_bitget_symbol(symbol)
+        bitget_sym = normalize_to_bitget_symbol(symbol, ex)
         
         # In one-way (unilateral) mode: buy = open long, sell = open short
         side = "buy" if direction.upper() == "LONG" else "sell"
@@ -281,7 +291,7 @@ def close_position(symbol: str, direction: str) -> dict:
         return {"success": False, "message": "Bitget client not initialized."}
 
     try:
-        bitget_sym = normalize_to_bitget_symbol(symbol)
+        bitget_sym = normalize_to_bitget_symbol(symbol, ex)
         side = "sell" if direction.upper() == "LONG" else "buy"
 
         # Fetch open positions to get size
