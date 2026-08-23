@@ -1,7 +1,10 @@
+import logging
 import database
 import exchange
 import bitget_client
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 def parse_forex_currencies(symbol: str):
     """
@@ -143,8 +146,16 @@ def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float,
     acc = database.get_account()
     if not acc:
         return {"success": False, "reason": "Account not initialized."}
-        
-    balance = acc['balance']
+    
+    # Use LIVE Bitget balance if available, otherwise fall back to DB balance
+    live_balance = bitget_client.get_account_balance()
+    if live_balance is not None and live_balance > 0:
+        balance = live_balance
+        logger.info(f"Using live Bitget balance for sizing: ${balance:.2f}")
+    else:
+        balance = acc['balance']
+        logger.info(f"Using local DB balance for sizing: ${balance:.2f}")
+    
     risk_pct = acc['risk_pct']
     risk_amount_usd = balance * (risk_pct / 100.0)
     

@@ -85,6 +85,32 @@ def get_status() -> dict:
     }
 
 
+def get_account_balance() -> float:
+    """
+    Fetches the real available USDT balance from the Bitget USDT-M Futures account.
+    Returns None if unable to fetch (e.g. API not configured or disabled).
+    """
+    if not LIVE_TRADING_ENABLED:
+        return None
+
+    ex = _get_exchange()
+    if not ex:
+        return None
+
+    try:
+        balance = ex.fetch_balance({"type": "swap"})
+        usdt_balance = (
+            balance.get("USDT", {}).get("free")
+            or balance.get("USDT", {}).get("total")
+            or 0.0
+        )
+        logger.info(f"Fetched Bitget USDT futures balance: ${usdt_balance:.2f}")
+        return float(usdt_balance)
+    except Exception as e:
+        logger.error(f"Failed to fetch Bitget account balance: {e}")
+        return None
+
+
 def normalize_to_bitget_symbol(symbol: str) -> str:
     """
     Converts yfinance-style crypto tickers to Bitget perpetual swap symbols.
