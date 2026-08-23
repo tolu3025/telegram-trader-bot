@@ -154,13 +154,6 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
     try:
         bitget_sym = normalize_to_bitget_symbol(symbol)
         
-        # Explicitly configure unilateral/one-way mode on the exchange for this symbol
-        try:
-            ex.set_position_mode(False, bitget_sym)
-            logger.info(f"Forced Bitget One-Way (Unilateral) position mode for {bitget_sym}.")
-        except Exception as pe:
-            logger.info(f"Failed to set position mode (likely already set to unilateral): {pe}")
-
         # In one-way (unilateral) mode: buy = open long, sell = open short
         side = "buy" if direction.upper() == "LONG" else "sell"
 
@@ -176,11 +169,39 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         raw_qty = max(min_qty, size)
         qty = float(ex.amount_to_precision(bitget_sym, raw_qty))
 
-        # One-way mode opening params — requires tradeSide='open'
-        params = {
-            "tdMode": "cross",  # Cross margin mode
-            "tradeSide": "open",
-        }
+        # Dynamically fetch current position mode from exchange to prevent mismatches
+        is_hedged = False
+        try:
+            mode_res = ex.fetch_position_mode(bitget_sym)
+            is_hedged = mode_res.get("hedged", False)
+            logger.info(f"Detected Bitget position mode for {bitget_sym}: {'Hedged' if is_hedged else 'One-Way'}")
+        except Exception as pe:
+            logger.warning(f"Could not fetch position mode: {pe}. Defaulting to One-Way.")
+
+        if is_hedged:
+            # Hedge mode order params
+            params = {
+                "tdMode": "cross",
+                "posSide": "long" if direction.upper() == "LONG" else "short"
+            }
+            # SL/TP params in hedge mode
+            sl_tp_params = {
+                "tdMode": "cross",
+                "posSide": "long" if direction.upper() == "LONG" else "short",
+                "reduceOnly": True
+            }
+        else:
+            # One-way mode order params
+            params = {
+                "tdMode": "cross",
+                "tradeSide": "open"
+            }
+            # SL/TP params in one-way mode
+            sl_tp_params = {
+                "tdMode": "cross",
+                "tradeSide": "close",
+                "reduceOnly": True
+            }
 
         entry_order = ex.create_order(
             symbol=bitget_sym,
@@ -202,10 +223,8 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 amount=qty,
                 price=sl,
                 params={
-                    "tdMode": "cross",
+                    **sl_tp_params,
                     "stopPrice": sl,
-                    "reduceOnly": True,
-                    "tradeSide": "close",
                 }
             )
         except Exception as e:
@@ -221,10 +240,8 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 amount=qty,
                 price=tp,
                 params={
-                    "tdMode": "cross",
+                    **sl_tp_params,
                     "stopPrice": tp,
-                    "reduceOnly": True,
-                    "tradeSide": "close",
                 }
             )
         except Exception as e:
