@@ -165,19 +165,7 @@ def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float,
     except Exception as e:
         return {"success": False, "reason": f"Error calculating position size: {str(e)}"}
         
-    # 4. Open position in database
-    pos_id = database.open_position(
-        symbol=norm_sym,
-        direction=direction.upper(),
-        entry_price=entry,
-        size=size,
-        stop_loss=sl,
-        take_profit=tp,
-        thesis=thesis,
-        risk_amount=risk_amount_usd
-    )
-    
-    # 5. Route to Bitget exchange if live trading is enabled
+    # 4. Route to Bitget exchange if live trading is enabled
     bitget_result = bitget_client.execute_order(
         symbol=norm_sym,
         direction=direction,
@@ -188,6 +176,25 @@ def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float,
     )
     bitget_msg = bitget_result.get("message", "")
     bitget_order_id = bitget_result.get("order_id", None)
+    
+    # If live trading is active and Bitget execution failed, do not write to DB!
+    if bitget_client.LIVE_TRADING_ENABLED and not bitget_result.get("success", False):
+        return {
+            "success": False,
+            "reason": f"Exchange Execution Failed: {bitget_msg}"
+        }
+        
+    # 5. Open position in database (either paper trade or successful live trade)
+    pos_id = database.open_position(
+        symbol=norm_sym,
+        direction=direction.upper(),
+        entry_price=entry,
+        size=size,
+        stop_loss=sl,
+        take_profit=tp,
+        thesis=thesis,
+        risk_amount=risk_amount_usd
+    )
     
     return {
         "success": True,
@@ -221,18 +228,24 @@ def get_position_details(position_id: int):
         pos_dict['current_price'] = live_price
         pos_dict['floating_pnl'] = floating_pnl
         return pos_dict
-    except Exception:
-        # If live price fails, return position as-is with 0 floating PNL
-        pos_dict = dict(pos)
-        pos_dict['current_price'] = pos['entry_price']
-        pos_dict['floating_pnl'] = 0.0
-        return pos_dict
+    except Exception as e:
+        logger.error(f"Error getting details for position {position_id}: {e}")
+        return dict(pos)
 
 def update_portfolio():
     """
     Updates the equity of the account by checking all open positions
     and updating their floating P&L.
     """
+    # Sync database balance with real Bitget balance if live trading is enabled
+    if bitget_client.LIVE_TRADING_ENABLED:
+        live_balance = bitget_client.get_account_balance()
+        if live_balance is not None and live_balance > 0:
+            logger.info(f"Syncing DB balance with real Bitget balance: ${live_balance:.2f}")
+            acc = database.get_account()
+            if acc:
+                database.update_account_balance(live_balance, live_balance)
+                
     acc = database.get_account()
     if not acc:
         return
