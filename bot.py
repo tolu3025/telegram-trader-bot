@@ -246,7 +246,9 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif bitget_order_id == "SIMULATED":
                 exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
             else:
-                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}"
+                cur_bal = bitget_client.get_account_balance()
+                bal_str = f"${cur_bal:.2f} USDT" if cur_bal is not None else "Unknown/Error"
+                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}\nℹ️ **Bitget API Available Balance**: `{bal_str}`"
 
             success_msg = (
                 "✅ **TRADE APPROVED & EXECUTED**\n\n"
@@ -654,7 +656,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif bitget_order_id == "SIMULATED":
                 exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
             else:
-                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}"
+                cur_bal = bitget_client.get_account_balance()
+                bal_str = f"${cur_bal:.2f} USDT" if cur_bal is not None else "Unknown/Error"
+                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}\nℹ️ **Bitget API Available Balance**: `{bal_str}`"
 
             msg = (
                 "✅ **TRADE EXECUTED SUCCESSFULLY**\n\n"
@@ -718,7 +722,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif bitget_order_id == "SIMULATED":
                 exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
             else:
-                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}"
+                cur_bal = bitget_client.get_account_balance()
+                bal_str = f"${cur_bal:.2f} USDT" if cur_bal is not None else "Unknown/Error"
+                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}\nℹ️ **Bitget API Available Balance**: `{bal_str}`"
 
             msg = (
                 "✅ **SESSION SIGNAL APPROVED & EXECUTED**\n\n"
