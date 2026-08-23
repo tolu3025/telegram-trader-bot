@@ -307,10 +307,10 @@ def generate_session_signal(session_name: str, technical_summary: str, current_t
         if account_balance < 100.0:
             balance_context += (
                 "⚠️ CRITICAL: The user has a small account balance. You MUST NOT select expensive base assets "
-                "like BTC-USD or ETH-USD because their minimum exchange order sizes are too large for their balance. "
-                "Instead, you MUST select a lower-priced cryptocurrency asset (e.g. SOL-USD, ADA-USD, XRP-USD, "
-                "DOGE-USD, BCH-USD, LINK-USD, AVAX-USD, NEAR-USD, SUI-USD, etc.) where the minimum order size "
-                "is much cheaper (under $10 USD nominal value) and fits their wallet volume.\n"
+                "like BTC-USD, ETH-USD, or even SOL-USD. "
+                "Instead, you MUST strictly select from this whitelist of ultra-cheap cryptocurrency assets: "
+                "POPCAT-USD, TRX-USD, SHIB-USD, XRP-USD, or PEPE-USD. "
+                "These have very low minimum order sizes that fit their wallet volume.\n"
             )
 
     forex_notice = ""
