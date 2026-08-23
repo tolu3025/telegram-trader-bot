@@ -313,41 +313,25 @@ def generate_session_signal(session_name: str, technical_summary: str, current_t
     {forex_notice}
     
     === MANDATORY ANALYSIS PROTOCOL ===
-    You are a professional risk manager. You do NOT force trades. Follow this exact process:
+    You must always generate a trade suggestion. Identify the single best high-probability asset setup from the technical summary, even if market stability is not ideal or conditions are ranging/choppy.
     
-    STEP 1 — MARKET REGIME ASSESSMENT:
-    Before looking at individual assets, assess overall market regime:
-    - Is the overall crypto market in a trending or ranging phase?
-    - Is there elevated fear, extreme greed, or uncertainty?
-    - Are macro conditions (rates, liquidity, news) supportive or hostile to risk assets?
-    - If market regime is uncertain or bearish: STRONGLY BIAS toward NO TRADE.
+    STEP 1 — CHOOSE THE BEST CANDIDATE:
+    Scan all available assets and identify the one with the strongest trend bias or most compelling price structure.
     
-    STEP 2 — ASSET SCAN & CONFLUENCE CHECK:
-    For each asset in the technical data, check CONFLUENCE across ALL of:
-    a) Trend: Is price above or below the 50-period MA on 4H chart? (use price action as proxy)
-    b) Structure: Is there a clear structural support/resistance level nearby?
-    c) Momentum: Does momentum (price change %, 52-week range position) support the trade direction?
-    d) Volume/Volatility: Is the current price moving on genuine volume or is it noise?
-    e) Entry quality: Is the entry near a key level (support/resistance/retest), or is it chasing a move mid-air?
+    STEP 2 — FORMULATE THE TRADE SETUP:
+    - Set has_signal = true.
+    - Select the symbol (e.g. BTC-USD).
+    - Choose direction (LONG or SHORT) based on recent momentum.
+    - Set entry price, a logical stop loss (SL), and take profit (TP).
+    - Maintain a Risk-to-Reward ratio of at least 1:1.5.
     
-    ONLY select an asset if at least 4 of the 5 confluence factors above align.
-    
-    STEP 3 — SIGNAL DECISION:
-    - If NO assets meet the 4/5 confluence threshold: set has_signal=false, signal=null.
-      Explain in your analysis WHY you are staying flat (market conditions, lack of setup, etc.)
-    - If ONE asset meets the threshold: set has_signal=true and formulate the signal.
-      R:R MUST be >= 1:2. SL at the nearest logical invalidation level (NOT arbitrary).
-      TP at the next major structural resistance/support level.
-    - NEVER pick a signal just to have one. A patient trader who skips bad setups beats one who forces trades.
-    
-    STEP 4 — WRITE THE BRIEFING:
-    Write a concise 2-3 paragraph markdown market overview in your Marcus Vance voice.
-    Be direct, data-driven, and mentor-like. Explain your reasoning for trading or staying flat.
+    STEP 3 — WRITE THE BRIEFING:
+    Write a concise 2-3 paragraph markdown market overview explaining the market context, why you chose this specific asset as the best current setup, and instructions on how to manage the trade cautiously.
     
     Respond STRICTLY in JSON format:
     {{
-        "analysis": "Your markdown formatted session briefing — market regime, key levels, and your trade/no-trade thesis.",
-        "has_signal": true or false,
+        "analysis": "Your markdown formatted session briefing detailing current market conditions and trade thesis.",
+        "has_signal": true,
         "signal": {{
             "symbol": "string (e.g. BTC-USD)",
             "direction": "LONG or SHORT",
@@ -355,9 +339,9 @@ def generate_session_signal(session_name: str, technical_summary: str, current_t
             "entry": float,
             "sl": float,
             "tp": float,
-            "confluence_score": "e.g. 4/5 — Trend ✅ Structure ✅ Momentum ✅ Volume ✅ Entry quality ❌",
-            "thesis": "1-sentence explanation of the exact setup and why it meets the confluence criteria."
-        }} or null
+            "confluence_score": "e.g. 3/5 — High probability setup",
+            "thesis": "1-sentence explanation of why this is the best available trade setup."
+        }}
     }}
     """
     
