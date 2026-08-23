@@ -115,7 +115,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚙️ `/mode [forex/crypto/perpetual]` - Switch active trading mode.\n\n"
         "📷 **Chart Analysis**: Upload a screenshot and ask a question for technical review."
     )
-    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+    
+    web_app_url = os.getenv("WEB_APP_URL", "http://localhost:8000")
+    keyboard = [
+        [
+            InlineKeyboardButton("📱 Open Trading Console", web_app=WebAppInfo(url=web_app_url))
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
 async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays account information, stats, and open positions."""
