@@ -161,7 +161,8 @@ def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float,
         direction=direction,
         entry=entry,
         sl=sl,
-        tp=tp
+        tp=tp,
+        size=size
     )
     bitget_msg = bitget_result.get("message", "")
     bitget_order_id = bitget_result.get("order_id", None)

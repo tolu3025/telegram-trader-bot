@@ -246,7 +246,7 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif bitget_order_id == "SIMULATED":
                 exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
             else:
-                exchange_line = ""
+                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}"
 
             success_msg = (
                 "✅ **TRADE APPROVED & EXECUTED**\n\n"
@@ -645,6 +645,16 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['pending_trade'] = None
         
         if execution["success"]:
+            # Show Bitget order info if available
+            bitget_order_id = execution.get("bitget_order_id")
+            bitget_msg = execution.get("bitget_message", "")
+            if bitget_order_id and bitget_order_id != "SIMULATED":
+                exchange_line = f"\n🔗 **Bitget Order ID**: `{bitget_order_id}`"
+            elif bitget_order_id == "SIMULATED":
+                exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
+            else:
+                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}"
+
             msg = (
                 "✅ **TRADE EXECUTED SUCCESSFULLY**\n\n"
                 f"**Position #{execution['position_id']} Opened:**\n"
@@ -652,7 +662,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• Direction: {execution['direction']}\n"
                 f"• Size: {execution['size']:,} units\n"
                 f"• Risked: ${execution['risk_amount']:.2f} USD\n"
-                f"• R:R Ratio: {execution['rr_ratio']:.2f}\n"
+                f"• R:R Ratio: {execution['rr_ratio']:.2f}"
+                f"{exchange_line}\n"
             )
             await query.edit_message_text(msg, parse_mode="Markdown")
         else:
@@ -699,12 +710,13 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if execution["success"]:
             # Show Bitget order info if available
             bitget_order_id = execution.get("bitget_order_id")
+            bitget_msg = execution.get("bitget_message", "")
             if bitget_order_id and bitget_order_id != "SIMULATED":
                 exchange_line = f"\n🔗 **Bitget Order ID**: `{bitget_order_id}`"
             elif bitget_order_id == "SIMULATED":
                 exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
             else:
-                exchange_line = ""
+                exchange_line = f"\n⚠️ **Exchange Error**: {bitget_msg or 'Execution failed'}"
 
             msg = (
                 "✅ **SESSION SIGNAL APPROVED & EXECUTED**\n\n"

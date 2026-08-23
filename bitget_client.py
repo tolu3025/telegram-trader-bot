@@ -99,7 +99,7 @@ def normalize_to_bitget_symbol(symbol: str) -> str:
     return f"{base}/USDT:USDT"
 
 
-def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: float) -> dict:
+def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: float, size: float) -> dict:
     """
     Executes a perpetual futures order on Bitget.
     
@@ -109,6 +109,7 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         entry:     Target entry price (used as limit order price)
         sl:        Stop Loss price
         tp:        Take Profit price
+        size:      Calculated position size
     
     Returns:
         dict with keys: success, order_id, message
@@ -136,8 +137,9 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         market = markets[bitget_sym]
         min_qty = market.get("limits", {}).get("amount", {}).get("min", 0.001)
 
-        # Use minimum size (portfolio.py already sized, this is just exchange execution)
-        qty = max(min_qty, 0.001)
+        # Format calculated size using CCXT amount_to_precision
+        raw_qty = max(min_qty, size)
+        qty = float(ex.amount_to_precision(bitget_sym, raw_qty))
 
         # Place entry limit order
         params = {
