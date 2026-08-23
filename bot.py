@@ -17,6 +17,7 @@ import exchange
 import portfolio
 import ai_engine
 import charting
+import bitget_client
 
 load_dotenv()
 
@@ -86,25 +87,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = acc['balance'] if acc else 10000.0
     risk_pct = acc['risk_pct'] if acc else 1.0
     
+    # Get Bitget exchange status
+    bg_status = bitget_client.get_status()
+    if bg_status["enabled"]:
+        bitget_line = f"\n🟢 **Bitget Execution**: {bg_status['mode'].upper()} — Live orders will be placed on your Bitget account."
+    else:
+        bitget_line = "\n⚪ **Bitget Execution**: DISABLED — Running in simulated paper trading mode."
+
     welcome_text = (
-        "💼 **Marcus Vance's Forex Trading Desk** 💼\n\n"
-        "Welcome kid. I'm Marcus Vance, your Risk Manager. I have 20 years of experience trading these currency markets. "
-        "I'm here to make sure you trade like a disciplined professional, not an emotional gambler.\n\n"
-        f"You start with a **${balance:,.2f} USD** simulated account, risking **{risk_pct}%** (${balance * risk_pct / 100:,.2f} USD) per trade.\n\n"
+        "💼 **Marcus Vance's Trading Desk** 💼\n\n"
+        "Welcome kid. I'm Marcus Vance — 30-year veteran risk manager and head of crypto & FX trading. "
+        "I trade with discipline, patience, and iron-clad risk rules. No gambling here.\n\n"
+        f"Account: **${balance:,.2f} USD** | Risk per trade: **{risk_pct}%** (${balance * risk_pct / 100:,.2f} USD){bitget_line}\n\n"
         "**AI Chat Integration (Natural Language)**\n"
-        "💬 You can now write setups in pure text! Just tell me your trade idea and I will audit it and show you confirmation buttons.\n"
-        "   _Example: 'Marcus, let's long EURUSD entry 1.0920 stop loss 1.0850 target 1.1060 because hourly broke out.'_\n\n"
+        "💬 Write setups in plain text and I'll audit them, check confluence, and execute if approved.\n"
+        "   _Example: 'Marcus, long BTC-USD entry 65000 SL 63000 TP 70000 — 4H breakout retest.'_\n\n"
         "**Available Commands:**\n"
-        "📂 `/portfolio` - Check balance, equity, and open positions.\n"
+        "📂 `/portfolio` - Check balance, equity, open positions, and Bitget status.\n"
         "📊 `/trade <symbol> <LONG/SHORT> <entry> <sl> <tp> <thesis>` - Propose trade via parameters.\n"
-        "📈 `/chart <symbol>` - Generate a live historical dark-mode chart of a pair.\n"
-        "🔔 `/dropsignal <tokyo/london/new_york/close>` - Generate and drop session signal/analysis manually.\n"
+        "📈 `/chart <symbol>` - Generate a live historical dark-mode chart.\n"
+        "🔔 `/dropsignal <tokyo/london/new_york/close>` - Trigger a live market scan and signal drop.\n"
         "❌ `/close <position_id>` - Manually close an open position.\n"
-        "📈 `/history` - View the performance of closed trades.\n"
-        "📓 `/journal <thoughts>` - Write your trading journal and get critique.\n"
-        "⚙️ `/risk <1-5>` - Update risk percentage per trade (default 1.0%).\n"
-        "🔄 `/reset [balance]` - Reset your account to clear all history and start fresh.\n\n"
-        "📷 **Chart Analysis**: Upload a chart image (screenshot) and add a caption or ask a question to get my technical review."
+        "📈 `/history` - View closed trade performance history.\n"
+        "📓 `/journal <thoughts>` - Write your trading journal and get AI critique.\n"
+        "⚙️ `/risk <1-5>` - Update risk percentage per trade.\n"
+        "🔄 `/reset [balance]` - Reset account to start fresh.\n\n"
+        "📷 **Chart Analysis**: Upload a screenshot and ask a question for technical review."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
@@ -130,12 +138,16 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     risk_amount = acc['balance'] * (acc['risk_pct'] / 100.0)
     
+    bg_status = bitget_client.get_status()
+    bg_line = f"🟢 Bitget: {bg_status['mode'].upper()}" if bg_status["enabled"] else "⚪ Bitget: Simulated (Paper Trading)"
+
     msg = (
         "💼 **Trading Desk Portfolio**\n"
         "-------------------------------------\n"
         f"💰 **Balance**: ${acc['balance']:,.2f} USD\n"
         f"📈 **Equity**: ${acc['equity']:,.2f} USD\n"
-        f"🛡️ **Risk Limit**: {acc['risk_pct']}% (${risk_amount:,.2f} USD)\n\n"
+        f"🛡️ **Risk Limit**: {acc['risk_pct']}% (${risk_amount:,.2f} USD)\n"
+        f"🔗 **Exchange**: {bg_line}\n\n"
         "📊 **Performance Metrics**:\n"
         f"• Total Trades: {stats['total_trades']}\n"
         f"• Win Rate: {stats['win_rate']:.1f}%\n"
@@ -226,6 +238,16 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Execute trade
         execution = portfolio.propose_and_open_trade(symbol, direction, entry, sl, tp, thesis)
         if execution["success"]:
+            # Show Bitget order info if available
+            bitget_order_id = execution.get("bitget_order_id")
+            bitget_msg = execution.get("bitget_message", "")
+            if bitget_order_id and bitget_order_id != "SIMULATED":
+                exchange_line = f"\n🔗 **Bitget Order ID**: `{bitget_order_id}`"
+            elif bitget_order_id == "SIMULATED":
+                exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
+            else:
+                exchange_line = ""
+
             success_msg = (
                 "✅ **TRADE APPROVED & EXECUTED**\n\n"
                 f"**Position #{execution['position_id']} Opened:**\n"
@@ -233,7 +255,8 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• Direction: {execution['direction']}\n"
                 f"• Size: {execution['size']:,} units\n"
                 f"• Risk Amount: ${execution['risk_amount']:.2f} USD\n"
-                f"• R:R Ratio: {execution['rr_ratio']:.2f}\n\n"
+                f"• R:R Ratio: {execution['rr_ratio']:.2f}"
+                f"{exchange_line}\n\n"
                 f"💬 **Marcus Vance's Feedback**:\n_{ai_review.get('feedback')}_"
             )
             

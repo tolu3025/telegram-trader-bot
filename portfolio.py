@@ -1,5 +1,6 @@
 import database
 import exchange
+import bitget_client
 from datetime import datetime
 
 def parse_forex_currencies(symbol: str):
@@ -154,6 +155,17 @@ def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float,
         risk_amount=risk_amount_usd
     )
     
+    # 5. Route to Bitget exchange if live trading is enabled
+    bitget_result = bitget_client.execute_order(
+        symbol=norm_sym,
+        direction=direction,
+        entry=entry,
+        sl=sl,
+        tp=tp
+    )
+    bitget_msg = bitget_result.get("message", "")
+    bitget_order_id = bitget_result.get("order_id", None)
+    
     return {
         "success": True,
         "position_id": pos_id,
@@ -161,7 +173,9 @@ def propose_and_open_trade(symbol: str, direction: str, entry: float, sl: float,
         "direction": direction.upper(),
         "size": size,
         "risk_amount": risk_amount_usd,
-        "rr_ratio": rr
+        "rr_ratio": rr,
+        "bitget_order_id": bitget_order_id,
+        "bitget_message": bitget_msg
     }
 
 def get_position_details(position_id: int):
@@ -291,6 +305,13 @@ def force_close_position(position_id: int):
         final_pnl = calculate_pnl(pos['direction'], pos['entry_price'], live_price, pos['size'], quote_to_usd)
         
         new_balance = database.close_position(position_id, live_price, final_pnl)
+        
+        # Also close on Bitget exchange if live trading enabled
+        bitget_client.close_position(
+            symbol=pos['symbol'],
+            direction=pos['direction']
+        )
+        
         return {
             "success": True,
             "exit_price": live_price,
