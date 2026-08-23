@@ -16,7 +16,19 @@ else:
 
 def init_db():
     """Initializes the database tables. Done via DDL in Supabase."""
-    pass
+    if supabase:
+        try:
+            acc = get_account(1)
+            if not acc:
+                print("Account #1 not found. Initializing default account...")
+                supabase.table("accounts").insert({
+                    "account_id": 1,
+                    "balance": 10000.0,
+                    "equity": 10000.0,
+                    "risk_pct": 1.0
+                }).execute()
+        except Exception as e:
+            print(f"Error initializing default account in init_db: {e}")
 
 # ACCOUNT OPERATIONS
 def get_account(account_id=1):
