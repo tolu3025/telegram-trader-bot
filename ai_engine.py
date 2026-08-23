@@ -50,9 +50,34 @@ You will receive trade proposals, chart data, or journal entries. You analyze th
 If a setup does not meet your standards, you REJECT it and explain exactly why. If it meets your standards, you APPROVE it with a clear thesis.
 """
 
+PERPETUAL_SYSTEM_INSTRUCTION = """
+You are Marcus Vance — 30-year veteran Head of Crypto & FX Trading, ex-prop firm risk manager, and an elite specialist in leveraged Perpetual Futures trading.
+
+Your STRICT, NON-NEGOTIABLE rules for Perpetual Trading:
+1. CAPITAL PRESERVATION is your first law. Leverage amplifies gains, but it wipes accounts faster.
+2. ALWAYS verify the Stop Loss (SL) is placed BEFORE the estimated Liquidation Price.
+   - For LONGs: Est. Liquidation Price (Liq) ≈ Entry * (1 - 0.995 / Leverage). SL must be strictly ABOVE Liquidation (SL > Liq).
+   - For SHORTs: Est. Liquidation Price (Liq) ≈ Entry * (1 + 0.995 / Leverage). SL must be strictly BELOW Liquidation (SL < Liq).
+   - If a setup violates this (liquidation price is hit before the stop loss), you MUST REJECT it immediately and explain the risk.
+3. LEVERAGE discipline: Limit leverage to 3x - 10x max. Reject any setups proposing 20x+ leverage. Suggest 5x as a professional standard.
+4. Sane placement relative to Support/Resistance:
+   - Utilize the provided dynamic SMA levels (SMA 20, SMA 50) and detected static Support (swing lows) / Resistance (swing highs) levels.
+   - For LONGs: Stop loss should be placed below the closest significant Support level. Placing SL above support or right on it is amateurish.
+   - For SHORTs: Stop loss should be placed above the closest significant Resistance level.
+5. CONFLUENCE: You need at least 3 indicators/catalysts aligning (e.g. Higher Timeframe trend, key level break/retest, volume expansion, RSI/MACD confluence) before entering a trade.
+6. FUNDING RATE awareness: Do not long in frothy positive funding markets or short in extreme negative funding markets to avoid bleeding capital.
+7. NO EMOTIONAL TRADING.
+
+You will receive trade proposals, chart data, or journal entries. You analyze them with the discipline of a prop firm manager.
+If a setup violates risk, leverage, stop loss, or liquidation conditions, you REJECT it and explain exactly why, suggesting adjustments.
+"""
+
 def get_system_instruction(mode: str) -> str:
-    if mode.lower().strip() == "crypto":
+    mode_clean = mode.lower().strip()
+    if mode_clean == "crypto":
         return CRYPTO_SYSTEM_INSTRUCTION
+    elif mode_clean == "perpetual":
+        return PERPETUAL_SYSTEM_INSTRUCTION
     return FOREX_SYSTEM_INSTRUCTION
 
 def review_trade_proposal(symbol: str, direction: str, entry: float, sl: float, tp: float, thesis: str, balance: float, risk_pct: float, mode: str = "forex") -> dict:
@@ -60,6 +85,35 @@ def review_trade_proposal(symbol: str, direction: str, entry: float, sl: float, 
     Evaluates a proposed trade from a professional risk manager perspective.
     Returns a dictionary with decision, reasons, suggestions, and coaching feedback.
     """
+    if mode.lower().strip() == "perpetual":
+        # Calculate liquidation price at 10x leverage (default)
+        leverage = 10.0
+        # For long: liq = entry * (1 - 0.995 / leverage)
+        # For short: liq = entry * (1 + 0.995 / leverage)
+        if direction.upper() == "LONG":
+            liq_price = entry * (1.0 - 0.995 / leverage)
+            if sl <= liq_price:
+                return {
+                    "decision": "REJECTED",
+                    "reason": f"Stop Loss ({sl:.5f}) is below the estimated liquidation price ({liq_price:.5f}) at {leverage}x leverage.",
+                    "suggested_sl": round(liq_price * 1.01, 5), # Suggesting 1% above liq price
+                    "suggested_tp": tp,
+                    "feedback": f"Marcus Vance: 'Listen kid, your Stop Loss is below your liquidation price ({liq_price:.5f}). "
+                                f"At {leverage}x leverage, you'll be liquidated and wiped out before your SL is even hit. "
+                                f"Move your Stop Loss higher, or lower your leverage. Protect your capital first.'"
+                }
+        else: # SHORT
+            liq_price = entry * (1.0 + 0.995 / leverage)
+            if sl >= liq_price:
+                return {
+                    "decision": "REJECTED",
+                    "reason": f"Stop Loss ({sl:.5f}) is above the estimated liquidation price ({liq_price:.5f}) at {leverage}x leverage.",
+                    "suggested_sl": round(liq_price * 0.99, 5), # Suggesting 1% below liq price
+                    "suggested_tp": tp,
+                    "feedback": f"Marcus Vance: 'Listen kid, your Stop Loss is above your liquidation price ({liq_price:.5f}). "
+                                f"At {leverage}x leverage, you'll be liquidated and wiped out before your SL is even hit. "
+                                f"Move your Stop Loss lower, or lower your leverage. Capital preservation is job #1.'"
+                }
     if not client:
         # Fallback if API key is not set
         rr = abs(tp - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 0
