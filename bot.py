@@ -677,6 +677,53 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Briefings and order approvals are optimized for Crypto, including market stability checks."
         )
         
+    elif data == "confirm_session_signal":
+        trade = context.user_data.get('pending_signal')
+        if not trade:
+            await query.edit_message_text("❌ Pending session signal expired or not found.")
+            return
+            
+        # Execute trade
+        execution = portfolio.propose_and_open_trade(
+            symbol=trade['symbol'],
+            direction=trade['direction'],
+            entry=trade['entry'],
+            sl=trade['sl'],
+            tp=trade['tp'],
+            thesis=trade['full_thesis']
+        )
+        
+        # Clear pending
+        context.user_data['pending_signal'] = None
+        
+        if execution["success"]:
+            # Show Bitget order info if available
+            bitget_order_id = execution.get("bitget_order_id")
+            if bitget_order_id and bitget_order_id != "SIMULATED":
+                exchange_line = f"\n🔗 **Bitget Order ID**: `{bitget_order_id}`"
+            elif bitget_order_id == "SIMULATED":
+                exchange_line = "\n⚪ **Exchange**: Simulated (paper trade — Bitget disabled)"
+            else:
+                exchange_line = ""
+
+            msg = (
+                "✅ **SESSION SIGNAL APPROVED & EXECUTED**\n\n"
+                f"**Position #{execution['position_id']} Opened:**\n"
+                f"• Symbol: {execution['symbol']}\n"
+                f"• Direction: {execution['direction']}\n"
+                f"• Size: {execution['size']:,} units\n"
+                f"• Risked: ${execution['risk_amount']:.2f} USD\n"
+                f"• R:R Ratio: {execution['rr_ratio']:.2f}"
+                f"{exchange_line}\n"
+            )
+            await query.edit_message_text(msg, parse_mode="Markdown")
+        else:
+            await query.edit_message_text(f"❌ **Execution Error**: {execution['reason']}")
+            
+    elif data == "discard_session_signal":
+        context.user_data['pending_signal'] = None
+        await query.edit_message_text("❌ **Session signal trade proposal discarded.** Marcus: _'Staying flat is a valid and disciplined choice.'_")
+        
     elif data.startswith("trigger_signal_"):
         session = data.replace("trigger_signal_", "")
         chat_id = query.message.chat.id
@@ -769,6 +816,7 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
     signal = analysis_data.get("signal")
     
     chart_bytes = None
+    reply_markup = None
     
     if has_signal and signal:
         symbol = signal.get("symbol")
@@ -782,33 +830,44 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
         # Append timeframe to the thesis for DB storage
         full_thesis = f"[{timeframe}] {thesis}"
         
-        # Execute trade automatically
-        execution = portfolio.propose_and_open_trade(symbol, direction, entry, sl, tp, full_thesis)
+        # Store in user_data for callback buttons
+        context.user_data['pending_signal'] = {
+            "symbol": symbol,
+            "direction": direction,
+            "entry": entry,
+            "sl": sl,
+            "tp": tp,
+            "full_thesis": full_thesis,
+            "timeframe": timeframe,
+            "thesis": thesis
+        }
         
-        if execution["success"]:
-            analysis_text += (
-                f"🚨 **MARCUS VANCE'S SESSION SIGNAL DETECTED** 🚨\n\n"
-                f"**Trade Executed Automatically (Position #{execution['position_id']}):**\n"
-                f"• Asset: {execution['symbol']}\n"
-                f"• Direction: {execution['direction']}\n"
-                f"• Timeframe: {timeframe}\n"
-                f"• Entry Level: {entry:.5f}\n"
-                f"• Stop Loss (SL): {sl:.5f}\n"
-                f"• Take Profit (TP): {tp:.5f}\n"
-                f"• Position Size: {execution['size']:,} units\n"
-                f"• Thesis: {thesis}"
-            )
-            
-            try:
-                # Generate chart with overlays
-                chart_bytes = charting.generate_live_chart(symbol, entry, sl, tp, direction)
-            except Exception as e:
-                logger.error(f"Error drawing session signal chart: {e}")
-        else:
-            analysis_text += (
-                f"⚠️ **Session Signal Blocked**: {execution['reason']}\n"
-                f"• Attempted: {direction} {symbol} @ {entry} (SL: {sl}, TP: {tp})"
-            )
+        analysis_text += (
+            f"🚨 **MARCUS VANCE'S SESSION SIGNAL DETECTED** 🚨\n\n"
+            f"**Proposed Trade Setup:**\n"
+            f"• Asset: {symbol}\n"
+            f"• Direction: {direction}\n"
+            f"• Timeframe: {timeframe}\n"
+            f"• Entry Level: {entry:.5f}\n"
+            f"• Stop Loss (SL): {sl:.5f}\n"
+            f"• Take Profit (TP): {tp:.5f}\n"
+            f"• Thesis: {thesis}\n\n"
+            f"Please approve or reject this trade execution using the buttons below."
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Approve Trade", callback_data="confirm_session_signal"),
+                InlineKeyboardButton("❌ Reject Trade", callback_data="discard_session_signal")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        try:
+            # Generate chart with overlays
+            chart_bytes = charting.generate_live_chart(symbol, entry, sl, tp, direction)
+        except Exception as e:
+            logger.error(f"Error drawing session signal chart: {e}")
     else:
         analysis_text += (
             f"ℹ️ **No Trade Signal Generated**\n\n"
@@ -837,6 +896,7 @@ async def run_session_analysis(session_key: str, chat_id: int, context: ContextT
     await context.bot.send_message(
         chat_id=chat_id,
         text=analysis_text,
+        reply_markup=reply_markup,
         parse_mode="Markdown"
     )
 
