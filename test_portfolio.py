@@ -134,4 +134,71 @@ def test_is_market_closed_for_symbol():
         mock_datetime.now.return_value = christmas_utc
         assert exchange.is_market_closed_for_symbol("EURUSD") is True
 
+def test_detect_support_resistance():
+    import pandas as pd
+    import exchange
+    # Create dummy DataFrame with a clear swing high at index 5 and clear swing low at index 15
+    data = {
+        'Close': [100.0] * 25,
+        'High': [100.0] * 25,
+        'Low': [100.0] * 25
+    }
+    df = pd.DataFrame(data)
+    
+    # Set a swing high at index 5: High = 110.0, neighbors are 100.0
+    df.at[5, 'High'] = 110.0
+    
+    # Set a swing low at index 15: Low = 90.0, neighbors are 100.0
+    df.at[15, 'Low'] = 90.0
+    
+    # Spot price is 100.0
+    supports, resistances = exchange.detect_support_resistance(df, 100.0, window=3)
+    
+    # The swing high at index 5 is 110.0 which is > spot (100.0), so it should be in resistances
+    assert 110.0 in resistances
+    
+    # The swing low at index 15 is 90.0 which is < spot (100.0), so it should be in supports
+    assert 90.0 in supports
+def test_review_trade_proposal_liquidation_checks():
+    import ai_engine
+    from unittest.mock import patch
+    
+    with patch('ai_engine.client', None):
+        # Test perpetual mode safety checks for LONG
+        # Entry = 60000, Leverage = 10x
+        # Est. Liq = 60000 * (1 - 0.995/10) = 60000 * 0.9005 = 54030
+        
+        # 1. Unsafe Long SL (below 54030)
+        res_unsafe_long = ai_engine.review_trade_proposal(
+            symbol="BTC-USD", direction="LONG", entry=60000.0, sl=53000.0, tp=70000.0,
+            thesis="Breakout", balance=10000.0, risk_pct=1.0, mode="perpetual"
+        )
+        assert res_unsafe_long['decision'] == "REJECTED"
+        assert "estimated liquidation price" in res_unsafe_long['reason']
+        
+        # 2. Safe Long SL (above 54030)
+        # Entry = 60000, SL = 55000, TP = 70000. R:R = 2.0 >= 1.5
+        res_safe_long = ai_engine.review_trade_proposal(
+            symbol="BTC-USD", direction="LONG", entry=60000.0, sl=55000.0, tp=70000.0,
+            thesis="Breakout", balance=10000.0, risk_pct=1.0, mode="perpetual"
+        )
+        assert res_safe_long['decision'] == "APPROVED"
 
+        # 3. Unsafe Short SL
+        # Entry = 60000, Leverage = 10x
+        # Est. Liq = 60000 * (1 + 0.995/10) = 60000 * 1.0995 = 65970
+        # Unsafe Short SL (above 65970, e.g. 67000)
+        res_unsafe_short = ai_engine.review_trade_proposal(
+            symbol="BTC-USD", direction="SHORT", entry=60000.0, sl=67000.0, tp=50000.0,
+            thesis="Breakout", balance=10000.0, risk_pct=1.0, mode="perpetual"
+        )
+        assert res_unsafe_short['decision'] == "REJECTED"
+        assert "estimated liquidation price" in res_unsafe_short['reason']
+
+        # 4. Safe Short SL
+        # Entry = 60000, SL = 64000, TP = 50000. R:R = 2.5 >= 1.5
+        res_safe_short = ai_engine.review_trade_proposal(
+            symbol="BTC-USD", direction="SHORT", entry=60000.0, sl=64000.0, tp=50000.0,
+            thesis="Breakout", balance=10000.0, risk_pct=1.0, mode="perpetual"
+        )
+        assert res_safe_short['decision'] == "APPROVED"
