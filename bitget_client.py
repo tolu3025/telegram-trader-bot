@@ -127,6 +127,7 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
 
     try:
         bitget_sym = normalize_to_bitget_symbol(symbol)
+        # In one-way (unilateral) mode: buy = open long, sell = open short
         side = "buy" if direction.upper() == "LONG" else "sell"
 
         # Fetch market info for minimum order size
@@ -141,10 +142,9 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         raw_qty = max(min_qty, size)
         qty = float(ex.amount_to_precision(bitget_sym, raw_qty))
 
-        # Place entry limit order
+        # One-way mode params — do NOT include posSide (that is for Hedge mode only)
         params = {
-            "tdMode": "cross",       # Cross margin
-            "posSide": "long" if direction.upper() == "LONG" else "short",
+            "tdMode": "cross",  # Cross margin mode
         }
 
         entry_order = ex.create_order(
@@ -157,7 +157,7 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         )
         order_id = entry_order.get("id", "unknown")
 
-        # Place Stop Loss (trigger order)
+        # Place Stop Loss trigger order (close direction is opposite of entry)
         try:
             sl_side = "sell" if direction.upper() == "LONG" else "buy"
             ex.create_order(
@@ -169,13 +169,13 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 params={
                     **params,
                     "stopPrice": sl,
-                    "stopLossPrice": sl,
+                    "reduceOnly": True,
                 }
             )
         except Exception as e:
             logger.warning(f"SL order placement warning (non-fatal): {e}")
 
-        # Place Take Profit (trigger order)
+        # Place Take Profit trigger order
         try:
             tp_side = "sell" if direction.upper() == "LONG" else "buy"
             ex.create_order(
@@ -187,7 +187,7 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 params={
                     **params,
                     "stopPrice": tp,
-                    "takeProfitPrice": tp,
+                    "reduceOnly": True,
                 }
             )
         except Exception as e:
