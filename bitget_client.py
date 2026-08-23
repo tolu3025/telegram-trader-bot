@@ -242,14 +242,13 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
             logger.warning(f"Could not fetch position mode: {pe}. Defaulting to One-Way.")
 
         if is_hedged:
-            # Hedge mode order params — USDT-M Futures, isolated margin
+            # Hedge mode order params
             params = {
                 "tdMode": "isolated",
                 "marginCoin": "USDT",
                 "productType": "USDT-FUTURES",
                 "posSide": "long" if direction.upper() == "LONG" else "short"
             }
-            # SL/TP params in hedge mode
             sl_tp_params = {
                 "tdMode": "isolated",
                 "marginCoin": "USDT",
@@ -258,14 +257,13 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 "reduceOnly": True
             }
         else:
-            # One-way mode order params — USDT-M Futures, isolated margin
+            # One-way mode order params
             params = {
                 "tdMode": "isolated",
                 "marginCoin": "USDT",
                 "productType": "USDT-FUTURES",
                 "tradeSide": "open"
             }
-            # SL/TP params in one-way mode
             sl_tp_params = {
                 "tdMode": "isolated",
                 "marginCoin": "USDT",
@@ -274,42 +272,49 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 "reduceOnly": True
             }
 
-        # ── Place Entry Order with auto-retry on insufficient balance ────────────
-        # If Bitget returns error 43012 (Insufficient balance), automatically halve
-        # the qty and retry up to 3 times before giving up.
+        # ── Place Entry Order: try isolated first, then cross, then reduce qty ──
         entry_order = None
         last_order_err = None
-        for attempt in range(4):
-            try:
-                logger.info(f"Order attempt {attempt + 1}: {side} {qty} {bitget_sym} @ {entry}")
-                entry_order = ex.create_order(
-                    symbol=bitget_sym,
-                    type="limit",
-                    side=side,
-                    amount=qty,
-                    price=entry,
-                    params=params
-                )
-                last_order_err = None
-                break  # success
-            except Exception as order_exc:
-                last_order_err = order_exc
-                err_str = str(order_exc)
-                if "43012" in err_str or "insufficient" in err_str.lower():
-                    new_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, qty * 0.5)))
-                    logger.warning(
-                        f"Insufficient balance on attempt {attempt + 1}. "
-                        f"Halving qty {qty} → {new_qty}"
+        td_modes_to_try = ["isolated", "cross"]  # try both margin modes
+
+        for td_mode in td_modes_to_try:
+            # Update tdMode in params
+            params["tdMode"] = td_mode
+            logger.info(f"Trying order with tdMode={td_mode}, qty={qty}, sym={bitget_sym}")
+
+            for attempt in range(3):  # up to 3 size reductions per mode
+                try:
+                    logger.info(f"  Attempt {attempt + 1}: {side} {qty} @ {entry}")
+                    entry_order = ex.create_order(
+                        symbol=bitget_sym,
+                        type="limit",
+                        side=side,
+                        amount=qty,
+                        price=entry,
+                        params=params
                     )
-                    if new_qty >= qty:  # can't reduce further (already at minimum)
-                        logger.error("Cannot reduce qty further — min lot size reached.")
-                        break
-                    qty = new_qty
-                else:
-                    break  # different error — don't retry
+                    last_order_err = None
+                    logger.info(f"  ✅ Order placed with tdMode={td_mode}!")
+                    break  # success
+                except Exception as order_exc:
+                    last_order_err = order_exc
+                    err_str = str(order_exc)
+                    if "43012" in err_str or "insufficient" in err_str.lower():
+                        new_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, qty * 0.5)))
+                        if new_qty >= qty:  # at minimum — stop reducing
+                            logger.error(f"  Min qty reached with tdMode={td_mode}. Trying next mode.")
+                            break
+                        logger.warning(f"  Insufficient balance, halving qty {qty} → {new_qty}")
+                        qty = new_qty
+                    else:
+                        logger.warning(f"  Non-balance error with tdMode={td_mode}: {err_str[:200]}")
+                        break  # different error — try next mode
+
+            if entry_order is not None:
+                break  # success — stop trying modes
 
         if entry_order is None:
-            raise last_order_err  # re-raise the last error so it surfaces properly
+            raise last_order_err
 
         order_id = entry_order.get("id", "unknown")
 
