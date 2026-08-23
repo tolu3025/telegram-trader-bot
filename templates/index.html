@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Marcus Vance Trading Console</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header glass">
+            <div class="header-main">
+                <div class="header-title">
+                    <h1>Marcus Vance</h1>
+                    <span class="sub-logo">Trading Console</span>
+                </div>
+                <div class="connection-status">
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span class="status-text" id="statusText">Connecting...</span>
+                </div>
+            </div>
+            <div class="header-meta">
+                <span class="badge badge-primary" id="modeBadge">MODE: FOREX</span>
+                <span class="badge badge-accent" id="exchangeBadge">Bitget: Sandbox</span>
+            </div>
+        </header>
+
+        <!-- PORTFOLIO DASHBOARD -->
+        <section class="dashboard-section glass card">
+            <div class="balance-container">
+                <span class="balance-label">Total Equity</span>
+                <div class="balance-amount">$<span id="balanceVal">0.00</span> <span class="currency">USDT</span></div>
+            </div>
+            <div class="balance-meta">
+                <div class="meta-item">
+                    <span class="meta-label">Leverage Limit</span>
+                    <span class="meta-value">10x (Isolated)</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Margin Mode</span>
+                    <span class="meta-value">Isolated</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- NAVIGATION TABS -->
+        <nav class="tab-navigation glass">
+            <button class="tab-btn active" data-tab="console"><i class="fa-solid fa-terminal"></i> Terminal</button>
+            <button class="tab-btn" data-tab="positions"><i class="fa-solid fa-chart-line"></i> Positions (<span id="posCount">0</span>)</button>
+            <button class="tab-btn" data-tab="scan"><i class="fa-solid fa-magnifying-glass-chart"></i> Market Scan</button>
+            <button class="tab-btn" data-tab="history"><i class="fa-solid fa-history"></i> History</button>
+        </nav>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+            <!-- TAB: TERMINAL -->
+            <div class="tab-pane active" id="tab-console">
+                <!-- TradingView Embed Chart Widget -->
+                <div class="chart-container glass">
+                    <div class="tradingview-widget-container" style="height:100%;width:100%;">
+                        <div id="tradingview_widget"></div>
+                    </div>
+                </div>
+
+                <!-- Order Form Card -->
+                <div class="order-form-container glass card">
+                    <h2 class="section-title"><i class="fa-solid fa-pen-nib"></i> Propose Setup</h2>
+                    <form id="tradeForm">
+                        <div class="form-row flex-row">
+                            <div class="form-group flex-1">
+                                <label for="tradeSymbol">Asset Symbol</label>
+                                <select id="tradeSymbol" required>
+                                    <!-- Options will dynamically populate based on active mode -->
+                                </select>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Direction</label>
+                                <div class="direction-switch">
+                                    <input type="radio" id="dirLong" name="direction" value="LONG" checked>
+                                    <label for="dirLong" class="dir-btn long-btn">LONG</label>
+                                    
+                                    <input type="radio" id="dirShort" name="direction" value="SHORT">
+                                    <label for="dirShort" class="dir-btn short-btn">SHORT</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="tradeEntry">Entry Price</label>
+                                <input type="number" id="tradeEntry" step="any" placeholder="0.00000" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row flex-row">
+                            <div class="form-group flex-1">
+                                <label for="tradeSl">Stop Loss (SL)</label>
+                                <input type="number" id="tradeSl" step="any" placeholder="0.00000" required>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="tradeTp">Take Profit (TP)</label>
+                                <input type="number" id="tradeTp" step="any" placeholder="0.00000" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="tradeThesis">Trade Thesis / Catalyst</label>
+                            <textarea id="tradeThesis" placeholder="Describe the technical pattern or fundamental reason..." rows="2" required></textarea>
+                        </div>
+
+                        <button type="submit" class="submit-btn" id="submitBtn">
+                            <i class="fa-solid fa-signature"></i> Submit Setup to Marcus
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- TAB: POSITIONS -->
+            <div class="tab-pane" id="tab-positions">
+                <h2 class="section-title"><i class="fa-solid fa-folder-open"></i> Open Positions</h2>
+                <div class="positions-list" id="positionsList">
+                    <!-- Dynamic open positions cards go here -->
+                    <div class="no-data">No open positions.</div>
+                </div>
+            </div>
+
+            <!-- TAB: MARKET SCAN -->
+            <div class="tab-pane" id="tab-scan">
+                <div class="scan-header">
+                    <h2 class="section-title"><i class="fa-solid fa-binoculars"></i> Live S/R Analysis</h2>
+                    <button class="icon-btn" id="refreshScanBtn"><i class="fa-solid fa-rotate"></i></button>
+                </div>
+                <div class="scan-table-container glass">
+                    <table class="scan-table">
+                        <thead>
+                            <tr>
+                                <th>Asset</th>
+                                <th>Spot Rate</th>
+                                <th>Trend</th>
+                                <th>SMAs (20/50)</th>
+                                <th>Static Support</th>
+                                <th>Static Resistance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scanTableBody">
+                            <!-- Dynamic scan data goes here -->
+                            <tr>
+                                <td colspan="6" class="no-data">Loading scan data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: HISTORY -->
+            <div class="tab-pane" id="tab-history">
+                <h2 class="section-title"><i class="fa-solid fa-history"></i> Closed Trades History</h2>
+                <div class="history-list" id="historyList">
+                    <!-- Dynamic closed positions go here -->
+                    <div class="no-data">No closed trades logged yet.</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- AI FEEDBACK POPUP MODAL -->
+    <div class="modal-overlay" id="feedbackModal">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <div class="decision-badge" id="modalDecisionBadge">APPROVED</div>
+                <button class="close-modal-btn" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="coaching-feedback">
+                    <div class="coach-avatar">
+                        <i class="fa-solid fa-user-tie"></i>
+                    </div>
+                    <div class="coach-speech">
+                        <div class="coach-name">Marcus Vance</div>
+                        <p class="feedback-text" id="modalFeedbackText">Analyzing your setup, stand by...</p>
+                    </div>
+                </div>
+                <div class="trade-stats-card glass" id="modalTradeStats">
+                    <div class="stat-row">
+                        <span>Position ID:</span>
+                        <strong id="modalPosId">-</strong>
+                    </div>
+                    <div class="stat-row">
+                        <span>Allocated size:</span>
+                        <strong id="modalSize">-</strong>
+                    </div>
+                    <div class="stat-row">
+                        <span>Risk Amount:</span>
+                        <strong id="modalRisk">-</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="confirmModalBtn">Understood</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
