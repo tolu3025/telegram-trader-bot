@@ -175,48 +175,62 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
         market = markets[bitget_sym]
         min_qty = market.get("limits", {}).get("amount", {}).get("min", 0.001)
 
-        # Set leverage to 10x — Bitget requires marginMode param explicitly
+        # ── Leverage Setup ─────────────────────────────────────────────────────
+        # Bitget CCXT set_leverage: try without extra params first (CCXT builds
+        # the correct payload automatically), then fall back to explicit marginCoin.
         LEVERAGE = 10
         leverage_set = False
-        for margin_mode in ["cross", "isolated"]:
+        for lev_params in [{}, {"marginCoin": "USDT"}, {"marginCoin": "usdt"}]:
             try:
-                ex.set_leverage(LEVERAGE, bitget_sym, params={"marginMode": margin_mode})
-                logger.info(f"Set leverage to {LEVERAGE}x ({margin_mode}) for {bitget_sym}")
+                ex.set_leverage(LEVERAGE, bitget_sym, params=lev_params)
+                logger.info(f"Set leverage to {LEVERAGE}x for {bitget_sym} (params={lev_params})")
                 leverage_set = True
                 break
             except Exception as le:
-                logger.warning(f"Could not set leverage with marginMode={margin_mode}: {le}")
+                logger.warning(f"set_leverage attempt (params={lev_params}) failed: {le}")
 
         if not leverage_set:
-            logger.warning("Leverage could not be set — falling back to conservative sizing (1x safety)")
+            logger.warning("All leverage attempts failed — sizing conservatively for 1x worst-case")
 
         # Format calculated size using CCXT amount_to_precision
         raw_qty = max(min_qty, size)
         qty = float(ex.amount_to_precision(bitget_sym, raw_qty))
 
-        # ── Balance Guard ──────────────────────────────────────────────────────
-        # Cap order value to 85% of available balance at WORST CASE (1x leverage).
-        # This is intentionally conservative: if set_leverage silently failed and
-        # the exchange defaults to 1x, the notional value = qty * entry must fit
-        # inside the available balance.  With proper 10x leverage the margin cost
-        # is only 1/10th of this, so being conservative here never over-constrains.
+        # ── Balance Guard ─────────────────────────────────────────────────────
+        # If leverage is confirmed, allow up to 90% of balance×leverage in notional.
+        # If leverage FAILED, cap notional to 70% of raw balance (1x worst-case).
+        # Either way, we never send an order Bitget will reject for balance reasons.
+        avail = 0.0
         try:
             live_balance = ex.fetch_balance({"type": "swap"})
-            avail = float(live_balance.get("USDT", {}).get("free") or 0.0)
-            if avail > 0:
-                # Hard cap: notional value of order ≤ 85% of available balance
-                max_notional = avail * 0.85
-                if qty * entry > max_notional:
-                    safe_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, max_notional / entry)))
-                    logger.warning(
-                        f"Order notional {qty * entry:.2f} USDT exceeds 85% of balance "
-                        f"({max_notional:.2f} USDT). Reduced qty: {qty} → {safe_qty}"
-                    )
-                    qty = safe_qty
-                else:
-                    logger.info(f"Balance guard OK: notional={qty * entry:.2f} USDT, avail={avail:.2f} USDT")
+            avail = float(
+                live_balance.get("USDT", {}).get("free")
+                or live_balance.get("USDT", {}).get("total")
+                or 0.0
+            )
         except Exception as be:
-            logger.warning(f"Balance guard check failed (non-fatal): {be}")
+            logger.warning(f"Could not fetch balance for guard (non-fatal): {be}")
+
+        if avail > 0:
+            if leverage_set:
+                # With confirmed 10x leverage, effective buying power = avail × 10
+                max_notional = avail * LEVERAGE * 0.90
+            else:
+                # Leverage not confirmed — assume 1x, cap at 70% of balance
+                max_notional = avail * 0.70
+
+            if qty * entry > max_notional:
+                safe_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, max_notional / entry)))
+                logger.warning(
+                    f"Balance guard: notional {qty * entry:.2f} USDT > max {max_notional:.2f}. "
+                    f"Reducing qty {qty} → {safe_qty} (leverage_set={leverage_set})"
+                )
+                qty = safe_qty
+            else:
+                logger.info(
+                    f"Balance guard OK: notional={qty * entry:.2f}, max_allowed={max_notional:.2f}, "
+                    f"avail={avail:.2f}, leverage_set={leverage_set}"
+                )
 
         # Dynamically fetch current position mode from exchange to prevent mismatches
         is_hedged = False
@@ -252,14 +266,43 @@ def execute_order(symbol: str, direction: str, entry: float, sl: float, tp: floa
                 "reduceOnly": True
             }
 
-        entry_order = ex.create_order(
-            symbol=bitget_sym,
-            type="limit",
-            side=side,
-            amount=qty,
-            price=entry,
-            params=params
-        )
+        # ── Place Entry Order with auto-retry on insufficient balance ────────────
+        # If Bitget returns error 43012 (Insufficient balance), automatically halve
+        # the qty and retry up to 3 times before giving up.
+        entry_order = None
+        last_order_err = None
+        for attempt in range(4):
+            try:
+                logger.info(f"Order attempt {attempt + 1}: {side} {qty} {bitget_sym} @ {entry}")
+                entry_order = ex.create_order(
+                    symbol=bitget_sym,
+                    type="limit",
+                    side=side,
+                    amount=qty,
+                    price=entry,
+                    params=params
+                )
+                last_order_err = None
+                break  # success
+            except Exception as order_exc:
+                last_order_err = order_exc
+                err_str = str(order_exc)
+                if "43012" in err_str or "insufficient" in err_str.lower():
+                    new_qty = float(ex.amount_to_precision(bitget_sym, max(min_qty, qty * 0.5)))
+                    logger.warning(
+                        f"Insufficient balance on attempt {attempt + 1}. "
+                        f"Halving qty {qty} → {new_qty}"
+                    )
+                    if new_qty >= qty:  # can't reduce further (already at minimum)
+                        logger.error("Cannot reduce qty further — min lot size reached.")
+                        break
+                    qty = new_qty
+                else:
+                    break  # different error — don't retry
+
+        if entry_order is None:
+            raise last_order_err  # re-raise the last error so it surfaces properly
+
         order_id = entry_order.get("id", "unknown")
 
         # Place Stop Loss trigger order (close direction is opposite of entry)
