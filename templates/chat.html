@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Marcus Vance Trading Console - Ask Marcus</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Marked.js Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header glass">
+            <div class="header-main">
+                <div class="header-title">
+                    <h1>Marcus Vance</h1>
+                    <span class="sub-logo">Trading Console</span>
+                </div>
+                <div class="connection-status">
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span class="status-text" id="statusText">Connecting...</span>
+                </div>
+            </div>
+            <div class="header-meta">
+                <span class="badge badge-primary" id="modeBadge">MODE: FOREX</span>
+                <span class="badge badge-accent" id="exchangeBadge">Bitget: Sandbox</span>
+            </div>
+        </header>
+
+        <!-- NAVIGATION LINKS -->
+        <nav class="tab-navigation glass">
+            <a href="/" class="nav-link"><i class="fa-solid fa-terminal"></i> Console</a>
+            <a href="/chat" class="nav-link active"><i class="fa-solid fa-brain"></i> Ask Marcus</a>
+            <a href="/signals" class="nav-link"><i class="fa-solid fa-circle-nodes"></i> Session Signals</a>
+        </nav>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+            <div class="marcus-chat-container glass card" style="height: calc(100vh - 190px); min-height: 480px;">
+                <div class="marcus-chat-header">
+                    <div class="marcus-avatar-wrap">
+                        <div class="marcus-avatar-lg"><i class="fa-solid fa-user-tie"></i></div>
+                        <div>
+                            <div class="marcus-name-lg">Marcus Vance</div>
+                            <div class="marcus-title-sm">Senior FX & Crypto Strategist · 20yr Experience</div>
+                        </div>
+                    </div>
+                    <span class="marcus-status-dot" id="marcusStatusDot"></span>
+                </div>
+
+                <!-- Quick prompt buttons -->
+                <div class="quick-prompts">
+                    <button class="quick-prompt-btn" data-prompt="Give me a full London session analysis and your top trade setup for today.">
+                        <i class="fa-solid fa-city"></i> London Session
+                    </button>
+                    <button class="quick-prompt-btn" data-prompt="Give me a full New York session analysis and your top trade setup for today.">
+                        <i class="fa-solid fa-building"></i> NY Session
+                    </button>
+                    <button class="quick-prompt-btn" data-prompt="Give me a full crypto market analysis right now. What are BTC and ETH doing and where are the best setups?">
+                        <i class="fa-brands fa-bitcoin"></i> Crypto Analysis
+                    </button>
+                    <button class="quick-prompt-btn" data-prompt="Scan the forex market for me. Which pairs have the best structure and highest probability setups?">
+                        <i class="fa-solid fa-globe"></i> Forex Scan
+                    </button>
+                    <button class="quick-prompt-btn" data-prompt="What are the key economic events I should watch this week and how will they impact the markets?">
+                        <i class="fa-solid fa-calendar-week"></i> Weekly Events
+                    </button>
+                    <button class="quick-prompt-btn" data-prompt="Give me a perpetual futures market overview. What are the funding rates telling us and where is the smart money positioned?">
+                        <i class="fa-solid fa-infinity"></i> Perps Overview
+                    </button>
+                </div>
+
+                <!-- Chat messages -->
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-msg ai">
+                        <div class="chat-bubble ai-bubble">
+                            <strong>Marcus Vance:</strong> Good to have you in. Ask me anything — session setups, market structure, trade ideas, or risk management. I'll give you the unfiltered professional view.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input area -->
+                <div class="chat-input-area">
+                    <textarea id="marcusInput" class="chat-input" placeholder="Ask Marcus for market analysis, session signals, or trade ideas..." rows="2"></textarea>
+                    <button class="chat-send-btn" id="marcusSendBtn">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Script loading -->
+    <script src="/static/chat.js"></script>
+</body>
+</html>
