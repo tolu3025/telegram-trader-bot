@@ -528,6 +528,32 @@ async function handleMarcusSend() {
             </div>
         `;
         chatMessages.appendChild(aiMsgDiv);
+
+        // If Marcus generated an actionable signal, display an interactive trade setup card
+        if (data.has_signal && data.signal) {
+            const sig = data.signal;
+            const signalCardDiv = document.createElement('div');
+            signalCardDiv.className = 'chat-msg ai';
+            signalCardDiv.innerHTML = `
+                <div class="chat-bubble ai-bubble signal-chat-card glass" style="margin-top: 8px; width: 100%; border: 1px solid var(--neon-cyan); background: rgba(0, 242, 254, 0.03);">
+                    <div style="font-weight: 700; color: var(--neon-cyan); margin-bottom: 8px; font-size: 13px; display: flex; justify-content: space-between;">
+                        <span>🎯 ACTIONABLE SIGNAL</span>
+                        <span style="background: ${sig.direction === 'LONG' ? 'var(--neon-green)' : 'var(--neon-red)'}; color: #000; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 800;">${sig.direction}</span>
+                    </div>
+                    <div style="font-size: 12px; line-height: 1.5; color: var(--text-primary); margin-bottom: 12px;">
+                        <div style="margin-bottom: 4px;">Asset: <strong style="color: var(--neon-cyan);">${sig.symbol}</strong></div>
+                        <div style="margin-bottom: 4px;">Entry Level: <strong>${sig.entry}</strong></div>
+                        <div style="margin-bottom: 4px;">Stop Loss: <strong style="color: var(--neon-red);">${sig.sl}</strong></div>
+                        <div style="margin-bottom: 4px;">Take Profit: <strong style="color: var(--neon-green);">${sig.tp}</strong></div>
+                        <div style="margin-top: 6px; font-style: italic; color: var(--text-muted); font-size: 11px;">Thesis: "${sig.thesis}"</div>
+                    </div>
+                    <button class="chat-confirm-btn" onclick="prefillAndTrade('${sig.symbol}', '${sig.direction}', ${sig.entry}, ${sig.sl}, ${sig.tp}, '${sig.thesis}')" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--grad-primary); border: none; color: #000; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 0 10px rgba(0, 242, 254, 0.25);">
+                        <i class="fa-solid fa-signature"></i> Approve Setup
+                    </button>
+                </div>
+            `;
+            chatMessages.appendChild(signalCardDiv);
+        }
     } catch (e) {
         console.error('Chat error:', e);
         const indicator = document.getElementById('typingIndicator');
@@ -548,4 +574,36 @@ async function handleMarcusSend() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 }
+
+// Global prefill and redirection utility for chat signals
+window.prefillAndTrade = (symbol, direction, entry, sl, tp, thesis) => {
+    // Switch tab to Terminal (which is called 'console')
+    const consoleTabBtn = document.querySelector('.tab-btn[data-tab="console"]');
+    if (consoleTabBtn) consoleTabBtn.click();
+    
+    // Populate the dropdown for the current mode
+    populateSymbolsDropdown(currentMode);
+    
+    // Select symbol
+    tradeSymbol.value = symbol;
+    
+    // Set direction
+    if (direction.toUpperCase() === 'LONG') {
+        document.getElementById('dirLong').checked = true;
+    } else {
+        document.getElementById('dirShort').checked = true;
+    }
+    
+    // Fill prices
+    document.getElementById('tradeEntry').value = entry;
+    document.getElementById('tradeSl').value = sl;
+    document.getElementById('tradeTp').value = tp;
+    document.getElementById('tradeThesis').value = thesis;
+    
+    // Smooth scroll directly to order form
+    setTimeout(() => {
+        document.getElementById('tradeForm').scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+};
+
 
