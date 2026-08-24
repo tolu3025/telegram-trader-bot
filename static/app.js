@@ -23,6 +23,9 @@ const positionsList = document.getElementById('positionsList');
 const historyList = document.getElementById('historyList');
 const scanTableBody = document.getElementById('scanTableBody');
 const refreshScanBtn = document.getElementById('refreshScanBtn');
+const chatMessages = document.getElementById('chatMessages');
+const marcusInput = document.getElementById('marcusInput');
+const marcusSendBtn = document.getElementById('marcusSendBtn');
 
 // Modal Elements
 const feedbackModal = document.getElementById('feedbackModal');
@@ -104,6 +107,24 @@ document.addEventListener('DOMContentLoaded', () => {
     tradeSymbol.addEventListener('change', (e) => {
         const tvSym = tvSymbolMap[e.target.value] || 'BINANCE:BTCUSDT';
         initTradingViewWidget(tvSym);
+    });
+
+    // Marcus Chat Events
+    marcusSendBtn.addEventListener('click', handleMarcusSend);
+    marcusInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleMarcusSend();
+        }
+    });
+
+    // Quick Prompt Clicks
+    document.querySelectorAll('.quick-prompt-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const promptText = btn.getAttribute('data-prompt');
+            marcusInput.value = promptText;
+            handleMarcusSend();
+        });
     });
 });
 
@@ -457,3 +478,74 @@ function showModal(data) {
 function hideModal() {
     feedbackModal.classList.remove('active');
 }
+
+async function handleMarcusSend() {
+    const text = marcusInput.value.trim();
+    if (!text) return;
+
+    // Clear input & disable controls
+    marcusInput.value = '';
+    marcusInput.disabled = true;
+    marcusSendBtn.disabled = true;
+
+    // Append user message
+    const userMsgDiv = document.createElement('div');
+    userMsgDiv.className = 'chat-msg user';
+    userMsgDiv.innerHTML = `<div class="chat-bubble user-bubble">${text}</div>`;
+    chatMessages.appendChild(userMsgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // Append typing indicator
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'chat-msg ai';
+    typingIndicator.id = 'typingIndicator';
+    typingIndicator.innerHTML = `
+        <div class="chat-bubble typing-bubble">
+            Marcus is analyzing<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+    `;
+    chatMessages.appendChild(typingIndicator);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+
+        // Remove typing indicator
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) indicator.remove();
+
+        // Append AI response
+        const aiMsgDiv = document.createElement('div');
+        aiMsgDiv.className = 'chat-msg ai';
+        aiMsgDiv.innerHTML = `
+            <div class="chat-bubble ai-bubble">
+                <strong>Marcus Vance:</strong> ${data.reply || 'No response.'}
+            </div>
+        `;
+        chatMessages.appendChild(aiMsgDiv);
+    } catch (e) {
+        console.error('Chat error:', e);
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) indicator.remove();
+
+        const errorMsgDiv = document.createElement('div');
+        errorMsgDiv.className = 'chat-msg ai';
+        errorMsgDiv.innerHTML = `
+            <div class="chat-bubble ai-bubble">
+                <strong>Marcus Vance:</strong> Had some connectivity issues, kid. Try repeating that.
+            </div>
+        `;
+        chatMessages.appendChild(errorMsgDiv);
+    } finally {
+        marcusInput.disabled = false;
+        marcusSendBtn.disabled = false;
+        marcusInput.focus();
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+}
+
