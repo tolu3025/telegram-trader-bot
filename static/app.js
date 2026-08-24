@@ -23,9 +23,7 @@ const positionsList = document.getElementById('positionsList');
 const historyList = document.getElementById('historyList');
 const scanTableBody = document.getElementById('scanTableBody');
 const refreshScanBtn = document.getElementById('refreshScanBtn');
-const chatMessages = document.getElementById('chatMessages');
-const marcusInput = document.getElementById('marcusInput');
-const marcusSendBtn = document.getElementById('marcusSendBtn');
+
 
 // Modal Elements
 const feedbackModal = document.getElementById('feedbackModal');
@@ -109,24 +107,47 @@ document.addEventListener('DOMContentLoaded', () => {
         initTradingViewWidget(tvSym);
     });
 
-    // Marcus Chat Events
-    marcusSendBtn.addEventListener('click', handleMarcusSend);
-    marcusInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleMarcusSend();
-        }
-    });
+    // Check for query parameters to prefill trade setups (redirected from chat or signals page)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('symbol') && urlParams.has('entry')) {
+        const symbol = urlParams.get('symbol');
+        const direction = urlParams.get('direction') || 'LONG';
+        const entry = urlParams.get('entry');
+        const sl = urlParams.get('sl');
+        const tp = urlParams.get('tp');
+        const thesis = urlParams.get('thesis') || '';
 
-    // Quick Prompt Clicks
-    document.querySelectorAll('.quick-prompt-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const promptText = btn.getAttribute('data-prompt');
-            marcusInput.value = promptText;
-            handleMarcusSend();
-        });
-    });
+        // Switch to console/terminal tab
+        const consoleTabBtn = document.querySelector('.tab-btn[data-tab="console"]');
+        if (consoleTabBtn) consoleTabBtn.click();
+
+        // Wait a tiny bit for UI update
+        setTimeout(() => {
+            // Select symbol
+            tradeSymbol.value = symbol;
+            
+            // Set direction
+            if (direction.toUpperCase() === 'LONG') {
+                document.getElementById('dirLong').checked = true;
+            } else {
+                document.getElementById('dirShort').checked = true;
+            }
+            
+            // Fill values
+            document.getElementById('tradeEntry').value = entry;
+            document.getElementById('tradeSl').value = sl;
+            document.getElementById('tradeTp').value = tp;
+            document.getElementById('tradeThesis').value = thesis;
+
+            // Scroll to order form
+            document.getElementById('tradeForm').scrollIntoView({ behavior: 'smooth' });
+
+            // Clear URL query parameters to avoid double-filling on page reload
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }, 300);
+    }
 });
+
 
 // Setup navigation tabs
 function initTabs() {
@@ -478,155 +499,5 @@ function showModal(data) {
 function hideModal() {
     feedbackModal.classList.remove('active');
 }
-
-async function handleMarcusSend() {
-    const text = marcusInput.value.trim();
-    if (!text) return;
-
-    // Clear input & disable controls
-    marcusInput.value = '';
-    marcusInput.disabled = true;
-    marcusSendBtn.disabled = true;
-
-    // Append user message
-    const userMsgDiv = document.createElement('div');
-    userMsgDiv.className = 'chat-msg user';
-    userMsgDiv.innerHTML = `<div class="chat-bubble user-bubble">${text}</div>`;
-    chatMessages.appendChild(userMsgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    // Append typing indicator
-    const typingIndicator = document.createElement('div');
-    typingIndicator.className = 'chat-msg ai';
-    typingIndicator.id = 'typingIndicator';
-    typingIndicator.innerHTML = `
-        <div class="chat-bubble typing-bubble">
-            Marcus is analyzing<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
-        </div>
-    `;
-    chatMessages.appendChild(typingIndicator);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    try {
-        const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
-        });
-        const data = await res.json();
-
-        // Remove typing indicator
-        const indicator = document.getElementById('typingIndicator');
-        if (indicator) indicator.remove();
-
-        // Append AI response
-        const aiMsgDiv = document.createElement('div');
-        aiMsgDiv.className = 'chat-msg ai';
-        
-        // Parse markdown text using marked.js if available, fallback to basic text replacement
-        let parsedReply = data.reply || 'No response.';
-        if (typeof window.marked !== 'undefined' && window.marked.parse) {
-            parsedReply = window.marked.parse(parsedReply);
-        } else if (typeof marked !== 'undefined' && marked.parse) {
-            parsedReply = marked.parse(parsedReply);
-        } else {
-            // Basic fallback for simple formatting
-            parsedReply = parsedReply
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/`(.*?)`/g, '<code>$1</code>')
-                .replace(/\n/g, '<br>');
-        }
-        
-        aiMsgDiv.innerHTML = `
-            <div class="chat-bubble ai-bubble">
-                <strong>Marcus Vance:</strong>
-                <div class="markdown-content">${parsedReply}</div>
-            </div>
-        `;
-        chatMessages.appendChild(aiMsgDiv);
-        
-        // Extra scroll trigger to ensure bottom lock after rendering
-        setTimeout(() => {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }, 100);
-
-
-        // If Marcus generated an actionable signal, display an interactive trade setup card
-        if (data.has_signal && data.signal) {
-            const sig = data.signal;
-            const signalCardDiv = document.createElement('div');
-            signalCardDiv.className = 'chat-msg ai';
-            signalCardDiv.innerHTML = `
-                <div class="chat-bubble ai-bubble signal-chat-card glass" style="margin-top: 8px; width: 100%; border: 1px solid var(--neon-cyan); background: rgba(0, 242, 254, 0.03);">
-                    <div style="font-weight: 700; color: var(--neon-cyan); margin-bottom: 8px; font-size: 13px; display: flex; justify-content: space-between;">
-                        <span>🎯 ACTIONABLE SIGNAL</span>
-                        <span style="background: ${sig.direction === 'LONG' ? 'var(--neon-green)' : 'var(--neon-red)'}; color: #000; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 800;">${sig.direction}</span>
-                    </div>
-                    <div style="font-size: 12px; line-height: 1.5; color: var(--text-primary); margin-bottom: 12px;">
-                        <div style="margin-bottom: 4px;">Asset: <strong style="color: var(--neon-cyan);">${sig.symbol}</strong></div>
-                        <div style="margin-bottom: 4px;">Entry Level: <strong>${sig.entry}</strong></div>
-                        <div style="margin-bottom: 4px;">Stop Loss: <strong style="color: var(--neon-red);">${sig.sl}</strong></div>
-                        <div style="margin-bottom: 4px;">Take Profit: <strong style="color: var(--neon-green);">${sig.tp}</strong></div>
-                        <div style="margin-top: 6px; font-style: italic; color: var(--text-muted); font-size: 11px;">Thesis: "${sig.thesis}"</div>
-                    </div>
-                    <button class="chat-confirm-btn" onclick="prefillAndTrade('${sig.symbol}', '${sig.direction}', ${sig.entry}, ${sig.sl}, ${sig.tp}, '${sig.thesis}')" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--grad-primary); border: none; color: #000; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 0 10px rgba(0, 242, 254, 0.25);">
-                        <i class="fa-solid fa-signature"></i> Approve Setup
-                    </button>
-                </div>
-            `;
-            chatMessages.appendChild(signalCardDiv);
-        }
-    } catch (e) {
-        console.error('Chat error:', e);
-        const indicator = document.getElementById('typingIndicator');
-        if (indicator) indicator.remove();
-
-        const errorMsgDiv = document.createElement('div');
-        errorMsgDiv.className = 'chat-msg ai';
-        errorMsgDiv.innerHTML = `
-            <div class="chat-bubble ai-bubble">
-                <strong>Marcus Vance:</strong> Had some connectivity issues, kid. Try repeating that.
-            </div>
-        `;
-        chatMessages.appendChild(errorMsgDiv);
-    } finally {
-        marcusInput.disabled = false;
-        marcusSendBtn.disabled = false;
-        marcusInput.focus();
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-}
-
-// Global prefill and redirection utility for chat signals
-window.prefillAndTrade = (symbol, direction, entry, sl, tp, thesis) => {
-    // Switch tab to Terminal (which is called 'console')
-    const consoleTabBtn = document.querySelector('.tab-btn[data-tab="console"]');
-    if (consoleTabBtn) consoleTabBtn.click();
-    
-    // Populate the dropdown for the current mode
-    populateSymbolsDropdown(currentMode);
-    
-    // Select symbol
-    tradeSymbol.value = symbol;
-    
-    // Set direction
-    if (direction.toUpperCase() === 'LONG') {
-        document.getElementById('dirLong').checked = true;
-    } else {
-        document.getElementById('dirShort').checked = true;
-    }
-    
-    // Fill prices
-    document.getElementById('tradeEntry').value = entry;
-    document.getElementById('tradeSl').value = sl;
-    document.getElementById('tradeTp').value = tp;
-    document.getElementById('tradeThesis').value = thesis;
-    
-    // Smooth scroll directly to order form
-    setTimeout(() => {
-        document.getElementById('tradeForm').scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-};
 
 
