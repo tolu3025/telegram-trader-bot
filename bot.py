@@ -1135,16 +1135,10 @@ async def check_sl_tp_job(context: ContextTypes.DEFAULT_TYPE):
 
 # BOT ENTRYPOINT
 
-def main():
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not token or token == "your_telegram_bot_token_here":
-        logger.error("TELEGRAM_BOT_TOKEN is not set or is still the default. Exiting.")
-        return
-        
-    database.init_db()
-    
-    app = ApplicationBuilder().token(token).build()
-    
+def _register_handlers(app):
+    """Register all command and message handlers onto an Application instance."""
+    import datetime
+
     # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
@@ -1202,6 +1196,17 @@ def main():
         logger.info("Background job queue initialized for SL/TP monitoring and session briefs.")
     else:
         logger.warning("Job queue not available. Dynamic SL/TP check and scheduled signals disabled.")
+
+def main():
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token or token == "your_telegram_bot_token_here":
+        logger.error("TELEGRAM_BOT_TOKEN is not set or is still the default. Exiting.")
+        return
+        
+    database.init_db()
+    
+    app = ApplicationBuilder().token(token).build()
+    _register_handlers(app)
         
     logger.info("Starting Telegram Bot poll loop...")
     app.run_polling()
