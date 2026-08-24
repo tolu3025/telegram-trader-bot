@@ -210,18 +210,83 @@ os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
+    import asyncio
     import threading
 
-    # Start Telegram bot in background thread so both services run in one process
-    def run_bot():
+    def run_bot_in_thread():
+        """
+        Run the Telegram bot in a dedicated background thread with its own
+        asyncio event loop. We manually drive the bot lifecycle instead of
+        calling app.run_polling() which installs UNIX signal handlers and
+        therefore only works from the main thread.
+        """
+        import os
+        from telegram.ext import ApplicationBuilder
+        import bot as bot_module
+
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if not token or token == "your_telegram_bot_token_here":
+            print("Bot thread: TELEGRAM_BOT_TOKEN not set – bot disabled.")
+            return
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        async def _run():
+            # Build the application the same way bot.main() does, but
+            # use initialize/start/updater.start_polling directly so we
+            # never touch signal handlers.
+            from telegram.ext import ApplicationBuilder
+            builder = ApplicationBuilder().token(token)
+            try:
+                # python-telegram-bot >=20 supports job-queue via APScheduler;
+                # keep it enabled so scheduled jobs work.
+                pass
+            except Exception:
+                pass
+
+            # Let bot_module register all handlers onto a fresh Application
+            # by temporarily monkey-patching its run_polling call.
+            import bot as bm
+            original_run_polling = None
+
+            tg_app = builder.build()
+
+            # Re-register all handlers using bot_module's internal setup
+            bm._register_handlers(tg_app)
+
+            try:
+                await tg_app.initialize()
+                await tg_app.start()
+                if tg_app.updater:
+                    await tg_app.updater.start_polling()
+                # Start job queue if available
+                if tg_app.job_queue:
+                    await tg_app.job_queue.start()
+                print("Bot thread: Telegram bot is running.")
+                # Keep thread alive
+                await asyncio.Event().wait()
+            except Exception as e:
+                print(f"Bot thread inner error: {e}")
+            finally:
+                try:
+                    if tg_app.updater:
+                        await tg_app.updater.stop()
+                    await tg_app.stop()
+                    await tg_app.shutdown()
+                except Exception:
+                    pass
+
         try:
-            import bot
-            bot.main()
+            loop.run_until_complete(_run())
         except Exception as e:
             print(f"Bot thread error: {e}")
+        finally:
+            loop.close()
 
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
     bot_thread.start()
 
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
+
