@@ -451,13 +451,133 @@ def generate_session_signal(session_name: str, technical_summary: str, current_t
             "signal": None
         }
 
-def chat_with_marcus(user_message: str, mode: str = "forex") -> str:
+def chat_with_marcus(user_message: str, mode: str = "forex") -> dict:
     """
-    Sends a chat message to Marcus Vance and returns his reply.
+    Sends a chat message to Marcus Vance.
+    If the user is asking for a trade signal/setup, it scans the live markets,
+    performs a rigorous SMC/Confluence analysis, and returns a structured signal.
+    Otherwise, returns a text-only response.
     """
-    if not client:
-        return "Marcus Vance: 'I'm offline, kid. Set up your OPENAI_API_KEY if you want my guidance.'"
+    import exchange
+    import database
+    import bitget_client
 
+    if not client:
+        return {
+            "reply": "Marcus Vance: 'I'm offline, kid. Set up your OPENAI_API_KEY if you want my guidance.'",
+            "has_signal": False,
+            "signal": None
+        }
+
+    # 1. First, let's ask a fast mini-completion if the user is asking for a trade signal/setup
+    detector_prompt = f"""
+    You are a classifier. Determine if the user's message is requesting a live trade setup, a signal, or a market recommendation to enter a trade.
+    User message: "{user_message}"
+    
+    Respond strictly in JSON format:
+    {{
+        "wants_signal": true or false,
+        "specific_symbol": "string or null (e.g. 'BTC-USD' if they specifically asked for BTC, else null)"
+    }}
+    """
+    
+    wants_signal = False
+    specific_symbol = None
+    try:
+        det_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": detector_prompt}],
+            response_format={"type": "json_object"}
+        )
+        det_data = json.loads(det_response.choices[0].message.content)
+        wants_signal = det_data.get("wants_signal", False)
+        specific_symbol = det_data.get("specific_symbol")
+    except Exception as e:
+        print(f"Error in signal detection: {e}")
+
+    # 2. If they want a signal, gather live data and query Marcus
+    if wants_signal:
+        # Determine symbols to scan
+        if mode == "forex":
+            all_symbols = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "GC=F"]
+        else:
+            all_symbols = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD", "DOGE-USD"]
+            
+        # Filter if a specific symbol was requested
+        if specific_symbol:
+            norm_spec = exchange.normalize_symbol(specific_symbol)
+            # Find closest match in our scanned list or use it directly
+            matched = [s for s in all_symbols if exchange.normalize_symbol(s) == norm_spec]
+            if matched:
+                symbols_to_scan = matched
+            else:
+                symbols_to_scan = [norm_spec]
+        else:
+            symbols_to_scan = all_symbols
+
+        # Gather market summary
+        try:
+            technical_summary = exchange.get_market_summary(symbols_to_scan)
+        except Exception as e:
+            technical_summary = f"Error scanning live markets: {e}"
+
+        # Get balance for context
+        live_balance = bitget_client.get_account_balance()
+        if live_balance is None:
+            acc = database.get_account()
+            live_balance = acc['balance'] if acc else 10000.0
+
+        prompt = f"""
+        The user is asking you for a trade signal/setup.
+        User request: "{user_message}"
+        
+        Account Balance: ${live_balance:.2f} USD
+        Active Mode: {mode.upper()}
+        
+        Here is the live market data scanned right now:
+        {technical_summary}
+        
+        === RIGOROUS TRADING PROTOCOL (90% TARGET ACCURACY) ===
+        Apply all your SMC, Order Block, Liquidity Sweep, and Trend Confluence guidelines with absolute discipline. 
+        Only approve/generate a signal if it is a high-probability setup with at least 3 strong confluences. 
+        If conditions are choppy or unclear, do not force a trade. Set has_signal = false and explain your reasoning.
+        
+        Respond STRICTLY in JSON format:
+        {{
+            "reply": "Your markdown formatted reply explaining the market structure, confluences, and why you are recommending this trade (or standing aside).",
+            "has_signal": true or false,
+            "signal": null or {{
+                "symbol": "string (e.g. BTC-USD)",
+                "direction": "LONG or SHORT",
+                "entry": float,
+                "sl": float,
+                "tp": float,
+                "thesis": "1-sentence trade thesis.",
+                "confluence_score": "e.g. 4/5 confluences met"
+            }}
+        }}
+        """
+        
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": get_system_instruction(mode)},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            content = response.choices[0].message.content
+            return json.loads(content)
+        except Exception as e:
+            print(f"Error in chat signal generation: {e}")
+            return {
+                "reply": f"Marcus Vance: 'I hit a technical issue scanning the order book, kid: {str(e)}'",
+                "has_signal": False,
+                "signal": None
+            }
+            
+    # 3. Text-only conversational response
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -466,8 +586,18 @@ def chat_with_marcus(user_message: str, mode: str = "forex") -> str:
                 {"role": "user", "content": user_message}
             ]
         )
-        return response.choices[0].message.content
+        reply_content = response.choices[0].message.content
+        return {
+            "reply": reply_content,
+            "has_signal": False,
+            "signal": None
+        }
     except Exception as e:
-        print(f"Error in chat_with_marcus: {e}")
-        return f"Marcus Vance is having trouble hearing you: {str(e)}"
+        print(f"Error in chat_with_marcus conversation: {e}")
+        return {
+            "reply": f"Marcus Vance is having trouble hearing you: {str(e)}",
+            "has_signal": False,
+            "signal": None
+        }
+
 
