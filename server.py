@@ -210,5 +210,18 @@ os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
+    import threading
+
+    # Start Telegram bot in background thread so both services run in one process
+    def run_bot():
+        try:
+            import bot
+            bot.main()
+        except Exception as e:
+            print(f"Bot thread error: {e}")
+
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
