@@ -53,14 +53,21 @@
             </div>
         </section>
 
-        <!-- NAVIGATION TABS -->
+        <!-- NAVIGATION LINKS -->
         <nav class="tab-navigation glass">
-            <button class="tab-btn active" data-tab="console"><i class="fa-solid fa-terminal"></i> Terminal</button>
-            <button class="tab-btn" data-tab="marcus"><i class="fa-solid fa-brain"></i> Ask Marcus</button>
-            <button class="tab-btn" data-tab="positions"><i class="fa-solid fa-chart-line"></i> Positions (<span id="posCount">0</span>)</button>
-            <button class="tab-btn" data-tab="scan"><i class="fa-solid fa-magnifying-glass-chart"></i> Market Scan</button>
-            <button class="tab-btn" data-tab="history"><i class="fa-solid fa-history"></i> History</button>
+            <a href="/" class="nav-link active"><i class="fa-solid fa-terminal"></i> Console</a>
+            <a href="/chat" class="nav-link"><i class="fa-solid fa-brain"></i> Ask Marcus</a>
+            <a href="/signals" class="nav-link"><i class="fa-solid fa-circle-nodes"></i> Session Signals</a>
         </nav>
+
+        <!-- CONSOLE SUB-TABS -->
+        <nav class="tab-navigation glass" style="margin-top: -8px; background: rgba(0, 0, 0, 0.15); padding: 4px;">
+            <button class="tab-btn active" data-tab="console" style="font-size: 0.75rem; padding: 6px 2px;"><i class="fa-solid fa-terminal" style="font-size: 0.85rem;"></i> Terminal</button>
+            <button class="tab-btn" data-tab="positions" style="font-size: 0.75rem; padding: 6px 2px;"><i class="fa-solid fa-chart-line" style="font-size: 0.85rem;"></i> Positions (<span id="posCount">0</span>)</button>
+            <button class="tab-btn" data-tab="scan" style="font-size: 0.75rem; padding: 6px 2px;"><i class="fa-solid fa-magnifying-glass-chart" style="font-size: 0.85rem;"></i> Market Scan</button>
+            <button class="tab-btn" data-tab="history" style="font-size: 0.75rem; padding: 6px 2px;"><i class="fa-solid fa-history" style="font-size: 0.85rem;"></i> History</button>
+        </nav>
+
 
         <!-- MAIN CONTENT AREA -->
         <main class="main-content">
@@ -123,61 +130,6 @@
                             <i class="fa-solid fa-signature"></i> Submit Setup to Marcus
                         </button>
                     </form>
-                </div>
-            </div>
-
-            <!-- TAB: MARCUS AI CHAT -->
-            <div class="tab-pane" id="tab-marcus">
-                <div class="marcus-chat-container glass card">
-                    <div class="marcus-chat-header">
-                        <div class="marcus-avatar-wrap">
-                            <div class="marcus-avatar-lg"><i class="fa-solid fa-user-tie"></i></div>
-                            <div>
-                                <div class="marcus-name-lg">Marcus Vance</div>
-                                <div class="marcus-title-sm">Senior FX & Crypto Strategist · 20yr Experience</div>
-                            </div>
-                        </div>
-                        <span class="marcus-status-dot" id="marcusStatusDot"></span>
-                    </div>
-
-                    <!-- Quick prompt buttons -->
-                    <div class="quick-prompts">
-                        <button class="quick-prompt-btn" data-prompt="Give me a full London session analysis and your top trade setup for today.">
-                            <i class="fa-solid fa-city"></i> London Session
-                        </button>
-                        <button class="quick-prompt-btn" data-prompt="Give me a full New York session analysis and your top trade setup for today.">
-                            <i class="fa-solid fa-building"></i> NY Session
-                        </button>
-                        <button class="quick-prompt-btn" data-prompt="Give me a full crypto market analysis right now. What are BTC and ETH doing and where are the best setups?">
-                            <i class="fa-brands fa-bitcoin"></i> Crypto Analysis
-                        </button>
-                        <button class="quick-prompt-btn" data-prompt="Scan the forex market for me. Which pairs have the best structure and highest probability setups?">
-                            <i class="fa-solid fa-globe"></i> Forex Scan
-                        </button>
-                        <button class="quick-prompt-btn" data-prompt="What are the key economic events I should watch this week and how will they impact the markets?">
-                            <i class="fa-solid fa-calendar-week"></i> Weekly Events
-                        </button>
-                        <button class="quick-prompt-btn" data-prompt="Give me a perpetual futures market overview. What are the funding rates telling us and where is the smart money positioned?">
-                            <i class="fa-solid fa-infinity"></i> Perps Overview
-                        </button>
-                    </div>
-
-                    <!-- Chat messages -->
-                    <div class="chat-messages" id="chatMessages">
-                        <div class="chat-msg ai">
-                            <div class="chat-bubble ai-bubble">
-                                <strong>Marcus Vance:</strong> Good to have you in. Ask me anything — session setups, market structure, trade ideas, or risk management. I'll give you the unfiltered professional view.
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Input area -->
-                    <div class="chat-input-area">
-                        <textarea id="marcusInput" class="chat-input" placeholder="Ask Marcus for market analysis, session signals, or trade ideas..." rows="2"></textarea>
-                        <button class="chat-send-btn" id="marcusSendBtn">
-                            <i class="fa-solid fa-paper-plane"></i>
-                        </button>
-                    </div>
                 </div>
             </div>
 
