@@ -207,11 +207,12 @@ def chat_with_marcus(req: ChatRequest):
     import bot
     mode = bot.get_current_mode()
     
-    reply = ai_engine.chat_with_marcus(
+    result = ai_engine.chat_with_marcus(
         user_message=req.message,
         mode=mode
     )
-    return {"reply": reply}
+    return result
+
 
 
 # Serve web console
