@@ -197,6 +197,23 @@ def market_scan():
             
     return scan_results
 
+
+class ChatRequest(BaseModel):
+    message: str
+
+@app.post("/api/chat")
+def chat_with_marcus(req: ChatRequest):
+    """Send a free-form message to Marcus Vance AI and get a response."""
+    import bot
+    mode = bot.get_current_mode()
+    
+    reply = ai_engine.chat_with_marcus(
+        user_message=req.message,
+        mode=mode
+    )
+    return {"reply": reply}
+
+
 # Serve web console
 @app.get("/")
 def get_index():
