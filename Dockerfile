@@ -18,5 +18,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
-# Start the bot
-CMD ["python", "-u", "bot.py"]
+# Start the web server (bot.py is started as a background thread from server.py)
+CMD ["python", "-u", "server.py"]
