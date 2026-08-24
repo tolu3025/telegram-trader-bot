@@ -450,3 +450,24 @@ def generate_session_signal(session_name: str, technical_summary: str, current_t
             "has_signal": False,
             "signal": None
         }
+
+def chat_with_marcus(user_message: str, mode: str = "forex") -> str:
+    """
+    Sends a chat message to Marcus Vance and returns his reply.
+    """
+    if not client:
+        return "Marcus Vance: 'I'm offline, kid. Set up your OPENAI_API_KEY if you want my guidance.'"
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": get_system_instruction(mode)},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error in chat_with_marcus: {e}")
+        return f"Marcus Vance is having trouble hearing you: {str(e)}"
+
