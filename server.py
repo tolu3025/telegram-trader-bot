@@ -215,10 +215,92 @@ def chat_with_marcus(req: ChatRequest):
 
 
 
-# Serve web console
+# Serve web console pages
 @app.get("/")
 def get_index():
     return FileResponse("templates/index.html")
+
+@app.get("/chat")
+def get_chat():
+    return FileResponse("templates/chat.html")
+
+@app.get("/signals")
+def get_signals():
+    return FileResponse("templates/signals.html")
+
+@app.post("/api/signals/trigger")
+def trigger_session_signal(session: str = "new_york"):
+    """
+    Triggers a live market scan for the specified session.
+    Returns the session analysis briefing and trade signal (if generated).
+    """
+    import bot
+    import datetime
+
+    session_mapping = {
+        "tokyo": ("Tokyo Session Open", ["AUDUSD=X", "USDJPY=X", "NZDUSD=X", "BTC-USD"]),
+        "london": ("London Session Open", ["EURUSD=X", "GBPUSD=X", "EURGBP=X", "ETH-USD"]),
+        "new_york": ("New York Session Open", ["EURUSD=X", "USDJPY=X", "GC=F", "SOL-USD"]),
+        "close": ("NY Session Recap", ["EURUSD=X", "GBPUSD=X", "BTC-USD"])
+    }
+    
+    session_key = session.lower().strip()
+    if session_key not in session_mapping:
+        raise HTTPException(status_code=400, detail=f"Unknown session: '{session}'")
+        
+    session_name, all_symbols = session_mapping[session_key]
+    current_mode = bot.get_current_mode()
+    
+    # Filter symbols by active mode
+    if current_mode in ["crypto", "perpetual"]:
+        symbols = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD", "DOGE-USD"]
+        if current_mode == "perpetual":
+            session_name = {
+                "tokyo": "Perpetual Futures Morning Briefing",
+                "london": "Perpetual Futures Midday Briefing",
+                "new_york": "Perpetual Futures Afternoon Briefing",
+                "close": "Perpetual Futures Daily Recap"
+            }.get(session_key, "Perpetual Futures Briefing")
+        else:
+            session_name = {
+                "tokyo": "Crypto Morning Briefing",
+                "london": "Crypto Midday Briefing",
+                "new_york": "Crypto Afternoon Briefing",
+                "close": "Crypto Daily Recap"
+            }.get(session_key, "Crypto Market Briefing")
+        forex_closed = True
+    else:
+        symbols = [sym for sym in all_symbols if exchange.is_forex_symbol(sym) and not exchange.is_market_closed_for_symbol(sym)]
+        forex_closed = False
+        
+    if not symbols:
+        return {
+            "session_name": session_name,
+            "analysis": "All markets for this session are currently closed.",
+            "has_signal": False,
+            "signal": None
+        }
+        
+    technical_summary = exchange.get_market_summary(symbols)
+    
+    live_balance = bitget_client.get_account_balance()
+    if live_balance is None:
+        acc = database.get_account()
+        live_balance = acc['balance'] if acc else 10000.0
+        
+    current_time_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    analysis_data = ai_engine.generate_session_signal(
+        session_name=session_name,
+        technical_summary=technical_summary,
+        current_time=current_time_str,
+        forex_closed=forex_closed,
+        mode=current_mode,
+        account_balance=live_balance
+    )
+    
+    analysis_data["session_name"] = session_name
+    return analysis_data
+
 
 # Create templates and static directories if not exists
 os.makedirs("templates", exist_ok=True)
