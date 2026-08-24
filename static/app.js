@@ -522,12 +522,35 @@ async function handleMarcusSend() {
         // Append AI response
         const aiMsgDiv = document.createElement('div');
         aiMsgDiv.className = 'chat-msg ai';
+        
+        // Parse markdown text using marked.js if available, fallback to basic text replacement
+        let parsedReply = data.reply || 'No response.';
+        if (typeof window.marked !== 'undefined' && window.marked.parse) {
+            parsedReply = window.marked.parse(parsedReply);
+        } else if (typeof marked !== 'undefined' && marked.parse) {
+            parsedReply = marked.parse(parsedReply);
+        } else {
+            // Basic fallback for simple formatting
+            parsedReply = parsedReply
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\n/g, '<br>');
+        }
+        
         aiMsgDiv.innerHTML = `
             <div class="chat-bubble ai-bubble">
-                <strong>Marcus Vance:</strong> ${data.reply || 'No response.'}
+                <strong>Marcus Vance:</strong>
+                <div class="markdown-content">${parsedReply}</div>
             </div>
         `;
         chatMessages.appendChild(aiMsgDiv);
+        
+        // Extra scroll trigger to ensure bottom lock after rendering
+        setTimeout(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }, 100);
+
 
         // If Marcus generated an actionable signal, display an interactive trade setup card
         if (data.has_signal && data.signal) {
